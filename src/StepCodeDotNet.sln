@@ -1,0 +1,27 @@
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Exp2CSharp", "Exp2CSharp\Exp2CSharp.csproj", "{4F47EE3E-E99B-44B1-B6B6-9CFF2B42E936}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Interop", "StepCodeDotNet.Interop\StepCodeDotNet.Interop.csproj", "{F71DD8A7-8BBF-433D-B626-F45F6631EC3B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4F47EE3E-E99B-44B1-B6B6-9CFF2B42E936}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F47EE3E-E99B-44B1-B6B6-9CFF2B42E936}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F47EE3E-E99B-44B1-B6B6-9CFF2B42E936}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F47EE3E-E99B-44B1-B6B6-9CFF2B42E936}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F71DD8A7-8BBF-433D-B626-F45F6631EC3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F71DD8A7-8BBF-433D-B626-F45F6631EC3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F71DD8A7-8BBF-433D-B626-F45F6631EC3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F71DD8A7-8BBF-433D-B626-F45F6631EC3B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
