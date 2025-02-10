@@ -10,5 +10,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StepCodeDotNet.Interop\StepCodeDotNet.Interop.csproj" />
+    <ProjectReference Include="..\StepDai\StepDai.csproj" />
   </ItemGroup>
 </Project>

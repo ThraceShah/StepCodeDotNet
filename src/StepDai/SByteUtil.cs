@@ -12,6 +12,11 @@ public unsafe static class SByteUtil
         return c >= '0' && c <= '9';
     }
 
+    public static bool IsXDigit(this sbyte c)
+    {
+        return IsDigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+    }
+
     public static bool IsAlNum(this sbyte c)
     {
         return IsAlpha(c) || IsDigit(c);

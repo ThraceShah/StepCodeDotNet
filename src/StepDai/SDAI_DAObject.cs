@@ -73,7 +73,7 @@ namespace StepDai
             return _dado_oid;
         }
 
-        public SDAI_PID_DA dado_pid()
+        public SDAI_PID_DA? dado_pid()
         {
             return null;
         }
@@ -93,10 +93,6 @@ namespace StepDai
         {
         }
 
-        public override void Dispose()
-        {
-        }
-
         public bool IsSame(SDAI_DAObject otherEntity)
         {
             return otherEntity == this;
@@ -108,7 +104,7 @@ namespace StepDai
         }
     }
 
-    public unsafe class SDAI_DAObject__set : IDisposable
+    public unsafe class SDAI_DAObject__set
     {
         private SDAI_DAObject[] _buf;
         private int _bufsize;
@@ -119,11 +115,6 @@ namespace StepDai
             _bufsize = defaultSize;
             _buf = new SDAI_DAObject[_bufsize];
             _count = 0;
-        }
-
-        public void Dispose()
-        {
-            _buf = null;
         }
 
         private void Check(int index)
