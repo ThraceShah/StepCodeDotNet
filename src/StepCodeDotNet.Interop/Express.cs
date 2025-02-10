@@ -1,15 +1,23 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace StepCodeDotNet.Interop;
+#pragma warning disable CS8603 // Possible null reference return.
 
 public static unsafe partial class Express
 {
-    static nint ExpressHandle;
-    static sbyte* __ERROR_buffer_errors;
-    static Scan_Buffer* __SCAN_buffers;
-    static int* __SCAN_current_buffer;
-    static sbyte* __SCANcurrent;
+    static readonly nint ExpressHandle;
+    static readonly sbyte* __ERROR_buffer_errors;
+    static readonly Scan_Buffer* __SCAN_buffers;
+    static readonly int* __SCAN_current_buffer;
+    static readonly sbyte* __SCANcurrent;
+    static readonly sbyte* __EXPRESSprogram_name;
+    static readonly nint* __ERRORusage_function;
+    static readonly nint* __EXPRESSinit_args;
+    static readonly nint* __EXPRESSbackend;
+    static readonly nint* __EXPRESSsucceed;
+    static readonly nint* __EXPRESSgetopt;
 
     static bool ErrorBufferErrors
     {
@@ -17,6 +25,45 @@ public static unsafe partial class Express
         set => *__ERROR_buffer_errors = value ? (sbyte)1 : (sbyte)0;
     }
 
+    public static string EXPRESSprogram_name
+    {
+        get => Marshal.PtrToStringAnsi((nint)__EXPRESSprogram_name);
+        set
+        {
+            var bytes = Encoding.ASCII.GetBytes(value);
+            Marshal.Copy(bytes, 0, (nint)__EXPRESSprogram_name, bytes.Length);
+        }
+    }
+
+    public static delegate* unmanaged[Cdecl]<void> ERRORusage_function
+    {
+        get => (delegate* unmanaged[Cdecl]<void>)(*__ERRORusage_function);
+        set => *__ERRORusage_function = (nint)value;
+    }
+
+    public static delegate* unmanaged[Cdecl]<int, byte**, void> EXPRESSinit_args
+    {
+        get => (delegate* unmanaged[Cdecl]<int, byte**, void>)(*__EXPRESSinit_args);
+        set => *__EXPRESSinit_args = (nint)value;
+    }
+
+    public static delegate* unmanaged[Cdecl]<Scope_*, void> EXPRESSbackend
+    {
+        get => (delegate* unmanaged[Cdecl]<Scope_*, void>)(*__EXPRESSbackend);
+        set => *__EXPRESSbackend = (nint)value;
+    }
+
+    public static delegate* unmanaged[Cdecl]<Scope_*, int> EXPRESSsucceed
+    {
+        get => (delegate* unmanaged[Cdecl]<Scope_*, int>)(*__EXPRESSsucceed);
+        set => *__EXPRESSsucceed = (nint)value;
+    }
+
+    public static delegate* unmanaged[Cdecl]<int, sbyte*, int> EXPRESSgetopt
+    {
+        get => (delegate* unmanaged[Cdecl]<int, sbyte*, int>)(*__EXPRESSgetopt);
+        set => *__EXPRESSgetopt = (nint)value;
+    }
 
     static Express()
     {
@@ -25,6 +72,12 @@ public static unsafe partial class Express
         __SCAN_buffers = (Scan_Buffer*)NativeLibrary.GetExport(ExpressHandle, "SCAN_buffers");
         __SCAN_current_buffer = (int*)NativeLibrary.GetExport(ExpressHandle, "SCAN_current_buffer");
         __SCANcurrent = (sbyte*)NativeLibrary.GetExport(ExpressHandle, "SCANcurrent");
+        __EXPRESSprogram_name = (sbyte*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSprogram_name");
+        __ERRORusage_function = (nint*)NativeLibrary.GetExport(ExpressHandle, "ERRORusage_function");
+        __EXPRESSinit_args = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSinit_args");
+        __EXPRESSbackend = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSbackend");
+        __EXPRESSsucceed = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSsucceed");
+        __EXPRESSgetopt = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSgetopt");
     }
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -379,9 +432,6 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern int EXPRESS_succeed([NativeTypeName("Express")] Scope_* model);
-
-    [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void EXPRESSinit_init();
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void build_complex([NativeTypeName("Express")] Scope_* param0);
