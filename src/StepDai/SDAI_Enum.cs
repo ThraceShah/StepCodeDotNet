@@ -60,7 +60,7 @@ public abstract unsafe class SDAI_Enum
                              int optional, sbyte* tokenList,
                              int needDelims = 0, int clearError = 1)
     {
-        var reader = new StepDaiStream<sbyte>(value);
+        var reader = new SDAIStream<sbyte>(value);
         if (clearError != 0)
         {
             err.ClearErrorMsg();
@@ -384,10 +384,10 @@ public abstract unsafe class SDAI_Enum
     protected virtual Severity ReadEnum(sbyte* inStr, ErrorDescriptor err,
                                        int AssignVal = 1, int needDelims = 1)
     {
-        var reader = new StepDaiStream<sbyte>(inStr);
+        var reader = new SDAIStream<sbyte>(inStr);
         return ReadEnum(reader, err, AssignVal, needDelims);
     }
-    protected virtual Severity ReadEnum(StepDaiStream<sbyte> inReader, ErrorDescriptor err,
+    protected virtual Severity ReadEnum(SDAIStream<sbyte> inReader, ErrorDescriptor err,
                                        int AssignVal = 1, int needDelims = 1)
     {
         if (AssignVal != 0)
@@ -755,10 +755,10 @@ public unsafe class SDAI_LOGICAL : SDAI_Enum
     protected override Severity ReadEnum(sbyte* inStr, ErrorDescriptor err,
                                    int AssignVal = 1, int needDelims = 1)
     {
-        var reader = new StepDaiStream<sbyte>(inStr);
+        var reader = new SDAIStream<sbyte>(inStr);
         return ReadEnum(reader, err, AssignVal, needDelims);
     }
-    protected override Severity ReadEnum(StepDaiStream<sbyte> inReader, ErrorDescriptor err,
+    protected override Severity ReadEnum(SDAIStream<sbyte> inReader, ErrorDescriptor err,
                                        int AssignVal = 1, int needDelims = 1)
     {
         if (AssignVal != 0)

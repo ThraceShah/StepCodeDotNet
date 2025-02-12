@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using StepCodeDotNet;
 
-namespace StepDai
+namespace StepCodeDotNet
 {
     public unsafe class SDAI_PID : SDAI_sdaiObject
     {

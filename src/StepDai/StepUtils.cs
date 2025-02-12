@@ -118,7 +118,7 @@ public static unsafe class StepUtils
         return err.severity();
     }
 
-    public static Severity CheckRemainingInput(this StepDaiStream<sbyte> reader, ErrorDescriptor err, string typeName, sbyte* tokenList)
+    public static Severity CheckRemainingInput(this SDAIStream<sbyte> reader, ErrorDescriptor err, string typeName, sbyte* tokenList)
     {
         StringBuilder skipBuf = new();
         StringBuilder errMsg = new();
@@ -204,7 +204,7 @@ public static unsafe class StepUtils
 
     }
 
-    public static Severity CheckRemainingInput(this StepDaiStream<sbyte> reader, ErrorDescriptor err, sbyte* typeNameCStr, sbyte* tokenList)
+    public static Severity CheckRemainingInput(this SDAIStream<sbyte> reader, ErrorDescriptor err, sbyte* typeNameCStr, sbyte* tokenList)
     {
         var typeName = Marshal.PtrToStringAnsi((nint)typeNameCStr);
 #pragma warning disable CS8604

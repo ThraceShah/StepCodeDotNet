@@ -95,7 +95,7 @@ public unsafe class SDAI_Binary
 
     public Severity StrToVal(sbyte* s, ErrorDescriptor err)
     {
-        var stream=new StepDaiStream<sbyte>(s);
+        var stream=new SDAIStream<sbyte>(s);
         return ReadBinary(stream, err,1,0);
     }
 
@@ -106,12 +106,12 @@ public unsafe class SDAI_Binary
 
     public Severity STEPread(sbyte* s, ErrorDescriptor err)
     {
-        var stream = new StepDaiStream<sbyte>(s);
+        var stream = new SDAIStream<sbyte>(s);
         return ReadBinary(stream, err,1,1);
 
     }
 
-    public Severity STEPread(StepDaiStream<sbyte> stream, ErrorDescriptor err)
+    public Severity STEPread(SDAIStream<sbyte> stream, ErrorDescriptor err)
     {
         return ReadBinary(stream, err, 1, 1);
     }
@@ -120,7 +120,7 @@ public unsafe class SDAI_Binary
                                    int optional, sbyte* tokenList,
                                    int needDelims = 0, int clearError = 1 )
     {
-        var reader = new StepDaiStream<sbyte>(value);
+        var reader = new SDAIStream<sbyte>(value);
         if (clearError != 0)
         {
             err.ClearErrorMsg();
@@ -294,7 +294,7 @@ public unsafe class SDAI_Binary
         return err.severity();
     }
 
-    protected Severity ReadBinary(StepDaiStream<sbyte> reader, ErrorDescriptor err, int AssignVal_ = 1,
+    protected Severity ReadBinary(SDAIStream<sbyte> reader, ErrorDescriptor err, int AssignVal_ = 1,
                              int needDelims = 1)
     {
         bool AssignVal = AssignVal_ !=0;

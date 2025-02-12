@@ -1,13 +1,13 @@
 namespace StepCodeDotNet;
 
-public unsafe struct StepDaiStream<T> where T : unmanaged
+public unsafe struct SDAIStream<T> where T : unmanaged
 {
     private int _position = 0;
     private T* _data;
 
     public int Position => _position;
 
-    public StepDaiStream(T* data)
+    public SDAIStream(T* data)
     {
         _data = data;
     }
@@ -30,19 +30,19 @@ public unsafe struct StepDaiStream<T> where T : unmanaged
 
 }
 
-public static class StepDaiStreamEx
+public static class SDAIStreamEx
 {
-    public static bool EndOfStream(this StepDaiStream<sbyte> stream)
+    public static bool EndOfStream(this SDAIStream<sbyte> stream)
     {
         return stream.Peek() == 0;
     }
 
-    public static bool CanRead(this StepDaiStream<sbyte> stream)
+    public static bool CanRead(this SDAIStream<sbyte> stream)
     {
         return stream.Peek() != 0;
     }
 
-    public static void SkipWhiteSpace(this StepDaiStream<sbyte> stream)
+    public static void SkipWhiteSpace(this SDAIStream<sbyte> stream)
     {
         while (stream.Peek().IsWhiteSpace())
         {
