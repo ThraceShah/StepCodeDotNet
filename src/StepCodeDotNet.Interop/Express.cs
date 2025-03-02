@@ -18,6 +18,7 @@ public static unsafe partial class Express
     static readonly nint* __EXPRESSbackend;
     static readonly nint* __EXPRESSsucceed;
     static readonly nint* __EXPRESSgetopt;
+    static readonly nint* __ERRORoccurred;
 
     static bool ErrorBufferErrors
     {
@@ -65,6 +66,8 @@ public static unsafe partial class Express
         set => *__EXPRESSgetopt = (nint)value;
     }
 
+    public static bool ERRORoccurred => *__ERRORoccurred != 0;
+
     static Express()
     {
         ExpressHandle = NativeLibrary.Load("express");
@@ -78,6 +81,7 @@ public static unsafe partial class Express
         __EXPRESSbackend = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSbackend");
         __EXPRESSsucceed = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSsucceed");
         __EXPRESSgetopt = (nint*)NativeLibrary.GetExport(ExpressHandle, "EXPRESSgetopt");
+        __ERRORoccurred = (nint*)NativeLibrary.GetExport(ExpressHandle, "ERRORoccurred");
     }
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -141,6 +145,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool ENTITYhas_immediate_supertype([NativeTypeName("Entity")] Scope_* param0, [NativeTypeName("Entity")] Scope_* param1);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -153,6 +158,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool ENTITYhas_supertype([NativeTypeName("Entity")] Scope_* param0, [NativeTypeName("Entity")] Scope_* param1);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -232,6 +238,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool ERRORis_enabled([NativeTypeName("enum ErrorCode")] ErrorCode errnum);
 
     [NativeTypeName("#define ERROR_none (Error)NULL")]
@@ -533,6 +540,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool SCANread();
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -626,6 +634,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool LISTempty([NativeTypeName("Linked_List")] Linked_List_* list);
 
     [NativeTypeName("#define LINK_NULL (Link)NULL")]
@@ -932,6 +941,7 @@ public static unsafe partial class Express
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     [return: NativeTypeName("_Bool")]
+    [return: MarshalAs(UnmanagedType.U1)]
     public static extern bool TYPEinherits_from([NativeTypeName("Type")] Scope_* param0, [NativeTypeName("enum type_enum")] type_enum param1);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

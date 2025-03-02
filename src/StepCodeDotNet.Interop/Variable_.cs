@@ -127,3 +127,52 @@ public unsafe partial struct Variable_
         }
     }
 }
+
+public static unsafe class VariableEx
+{
+    /*
+    #define VARget_name(v)          ((v)->name)
+    #define VARput_name(v,n)        ((v)->name = (n))
+    #define VARput_offset(v,off)        ((v)->offset = (off))
+    #define VARget_offset(v)        ((v)->offset)
+
+    #define VARget_initializer(v)       ((v)->initializer)
+    #define VARget_type(v)          ((v)->type)
+    #define VARget_optional(v)      ((v)->flags.optional)
+    #define VARget_unique(v)        ((v)->flags.unique)
+
+    #define VARis_derived(v)        ((v)->initializer != 0)
+    #define VARget_inverse(v)       ((v)->inverse_attribute)
+
+    */
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Expression_* VARget_name(Variable_* v) => v->name;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void VARput_name(Variable_* v, Expression_* n) => v->name = n;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void VARput_offset(Variable_* v, int off) => v->offset = off;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int VARget_offset(Variable_* v) => v->offset;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Expression_* VARget_initializer(Variable_* v) => v->initializer;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Scope_* VARget_type(Variable_* v) => v->type;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint VARget_optional(Variable_* v) => v->flags.optional;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint VARget_unique(Variable_* v) => v->flags.unique;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool VARis_derived(Variable_* v) => v->initializer != null;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Variable_* VARget_inverse(Variable_* v) => v->inverse_attribute;
+}
