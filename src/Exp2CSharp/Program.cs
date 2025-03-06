@@ -10,6 +10,18 @@ namespace Exp2CSharp;
 
 unsafe class Program
 {
+    const string csproj = """
+    <Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>disable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\StepCodeDotNet.Base\StepCodeDotNet.Base.csproj" />
+    </ItemGroup>
+    </Project>
+    """;
     const int EOF = -1;
     static char* sc_optarg;
     static int sc_optind = 0;
@@ -198,10 +210,11 @@ unsafe class Program
     static string typeOutputDir = string.Empty;
     static string entityOutputDir = string.Empty;
     static string entityImpOutputDir = string.Empty;
+    static string aggregateOutputDir = string.Empty;
     static string globalOutputFile = string.Empty;
     static string schemaName = string.Empty;
 
-    static string NameSpace => $"Exp2CSharp.Gen.{schemaName}";
+    static string NameSpace => $"StepCodeDotNet.Gen.{schemaName}";
     static Dictionary<string, List<string>> entitySelectsMap = new();
     static void Main()
     {
@@ -251,6 +264,11 @@ unsafe class Program
         {
             Directory.CreateDirectory(entityImpOutputDir);
         }
+        aggregateOutputDir = Path.Combine(outputDir, "Aggregates");
+        if (!Directory.Exists(aggregateOutputDir))
+        {
+            Directory.CreateDirectory(aggregateOutputDir);
+        }
         globalOutputFile = Path.Combine(outputDir, "GlobalUsing.cs");
         if (File.Exists(globalOutputFile))
         {
@@ -260,6 +278,14 @@ unsafe class Program
         PrintSchema(model);
         EXPRESScleanup();
         EXPRESSdestroy(model);
+        PrintCsproj();
+    }
+
+    static void PrintCsproj()
+    {
+        var csprojFile = Path.Combine(outputDir, $"{schemaName}.csproj");
+        using var writer = new StreamWriter(csprojFile);
+        writer.WriteLine(csproj);
     }
 
     static Dictionary<string, string> typeMap = new()
@@ -279,7 +305,8 @@ unsafe class Program
         writer.WriteLine("global using System.IO;");
         writer.WriteLine("global using System.Linq;");
         writer.WriteLine("global using System.Text;");
-        writer.WriteLine("global using Exp2CSharp.Gen;");
+        writer.WriteLine("global using StepCodeDotNet.Gen;");
+        writer.WriteLine("global using StepCodeDotNet.Base;");
         foreach (var (key, value) in typeMap)
         {
             writer.WriteLine($"global using {key}={value};");
@@ -323,16 +350,42 @@ unsafe class Program
         writer.WriteLine("}");
     }
 
-    static void PrintAggregateDef(Scope_* t)
+    static HashSet<nint> aggregates = new();
+    static void RecordAggregateDef(Scope_* t)
     {
-        var aggregateName = t->symbol.Name;
-        var baseType = TYPEget_base_type(t);
-        var fileName = Path.Combine(typeOutputDir, $"{aggregateName}.cs");
-        var bodyType = TYPEget_body(t);
-        using var globalWriter = new StreamWriter(globalOutputFile, true);
-        var baseTypeString = GetTypeNameString(baseType);
-        var typeString = CollectionTypeToString(bodyType->type, $"{NameSpace}.{baseTypeString}");
-        globalWriter.WriteLine($"global using {aggregateName}=System.Collections.Generic.{typeString};");
+        aggregates.Add((nint)t);
+        // var aggregateName = t->symbol.Name;
+        // var baseType = TYPEget_base_type(t);
+        // var fileName = Path.Combine(typeOutputDir, $"{aggregateName}.cs");
+        // var bodyType = TYPEget_body(t);
+        // using var globalWriter = new StreamWriter(globalOutputFile, true);
+        // var baseTypeString = GetTypeNameString(baseType);
+        // var typeString = CollectionTypeToString(bodyType->type, $"{NameSpace}.{baseTypeString}");
+        // globalWriter.WriteLine($"global using {aggregateName}=System.Collections.Generic.{typeString};");
+    }
+
+    static void PrintAggregateDef()
+    {
+        foreach (Scope_* t in aggregates)
+        {
+            var aggregateName = t->symbol.Name;
+            var baseType = TYPEget_base_type(t);
+            var fileName = Path.Combine(aggregateOutputDir, $"{aggregateName}.cs");
+            var bodyType = TYPEget_body(t);
+            using var writer = new StreamWriter(fileName);
+            writer.WriteLine($"namespace {NameSpace};");
+            var baseTypeString = GetTypeNameString(baseType);
+            var typeString = CollectionTypeToString(bodyType->type, baseTypeString);
+            List<string> superNames = [];
+            superNames.Add(typeString);
+            if (entitySelectsMap.TryGetValue(aggregateName, out var selects))
+            {
+                superNames.AddRange(selects);
+            }
+            writer.WriteLine($"public class {aggregateName} : {string.Join(", ", superNames)}");
+            writer.WriteLine("{");
+            writer.WriteLine("}");
+        }
     }
 
     static string CollectionTypeToString(type_enum collectionType, string contentType) => collectionType switch
@@ -369,7 +422,7 @@ unsafe class Program
         {
             var baseType = TYPEget_base_type(type);
             var bodyType = TYPEget_body(type);
-            var typeString = CollectionTypeToString(bodyType->type, GetTypeNameString(baseType));
+            var typeString = CollectionTypeToString(bodyType->type, GetAttrTypeName(GetTypeNameString(baseType)));
             return typeString;
         }
         else
@@ -404,7 +457,7 @@ unsafe class Program
         }
         else if (TYPEis_aggregate(type))
         {
-            PrintAggregateDef(type);
+            RecordAggregateDef(type);
         }
         else
         {
@@ -414,17 +467,32 @@ unsafe class Program
 
     static unsafe List<nint> entities = new();
 
+    static string EntityNameToInterfaceName(string entityName)
+    {
+        var name = char.ToUpper(entityName[0]) + entityName[1..];
+        return $"I{name}";
+    }
+
+    static Dictionary<string, string> entityInterfaceMap = new();
+
+    static void GenerateEnityInterfaceName(Scope_* entity)
+    {
+        var entityName = entity->symbol.Name;
+        var interfaceName = EntityNameToInterfaceName(entityName);
+        entityInterfaceMap.Add(entityName, interfaceName);
+    }
+
     static void PrintEntityDef(Scope_* entity)
     {
         var entityName = entity->symbol.Name;
-        var fileName = Path.Combine(entityOutputDir, $"{entityName}.cs");
+        var interfaceName = entityInterfaceMap[entityName];
+        var fileName = Path.Combine(entityOutputDir, $"{interfaceName}.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
-        writer.Write($"public interface {entityName}");
+        writer.Write($"public interface {interfaceName}");
         List<string> superNames = [];
         if (entitySelectsMap.TryGetValue(entityName, out var selects))
         {
-            //writer.Write($": {string.Join(", ", selects)}");
             superNames.AddRange(selects);
         }
         var supertypes = ENTITYget_supertypes(entity);
@@ -432,7 +500,7 @@ unsafe class Program
         {
             (*supertypes).For<Scope_>(super =>
             {
-                superNames.Add(super->symbol.Name);
+                superNames.Add(EntityNameToInterfaceName(super->symbol.Name));
             });
         }
         if (superNames.Count > 0)
@@ -448,7 +516,7 @@ unsafe class Program
             {
                 if (VARis_derived(attr) is false)
                 {
-                    var typeName = GetTypeNameString(attr->type);
+                    var typeName = GetAttrTypeName(GetTypeNameString(attr->type));
                     var attrName = attr->name->symbol.Name;
                     writer.WriteLine($"    {typeName} {attrName} {{ get; set; }}");
                 }
@@ -460,15 +528,24 @@ unsafe class Program
 
     }
 
+    static string GetAttrTypeName(string typeName)
+    {
+        if (entityInterfaceMap.TryGetValue(typeName, out var interfaceName))
+        {
+            return interfaceName;
+        }
+        return typeName;
+    }
+
     static void PrintEntityImpes()
     {
         foreach (Scope_* entity in entities)
         {
             var entityName = entity->symbol.Name;
-            var fileName = Path.Combine(entityImpOutputDir, $"{entityName}.cs");
+            var fileName = Path.Combine(entityImpOutputDir, $"{entityName}_imp.cs");
             using var writer = new StreamWriter(fileName);
             writer.WriteLine($"namespace {NameSpace};");
-            writer.WriteLine($"public class {entityName}_imp : {entityName}");
+            writer.WriteLine($"public class {entityName}_imp : {entityInterfaceMap[entityName]}");
             writer.WriteLine("{");
             var allAttributes = ENTITYget_all_attributes(entity);
             if (LISTempty(allAttributes) is false)
@@ -478,7 +555,7 @@ unsafe class Program
                 {
                     if (VARis_derived(attr) is false)
                     {
-                        var typeName = GetTypeNameString(attr->type);
+                        var typeName = GetAttrTypeName(GetTypeNameString(attr->type));
                         var attrName = attr->name->symbol.Name;
                         if (attrsSet.Add(attrName))
                         {
@@ -514,8 +591,10 @@ unsafe class Program
                 {
                     unsetObjs(schema);
                     SCOPEdo_types(schema, &de, PrintTypeDef);
+                    SCOPEdo_entities(schema, &de, GenerateEnityInterfaceName);
                     SCOPEdo_entities(schema, &de, PrintEntityDef);
                     PrintEntityImpes();
+                    PrintAggregateDef();
                     schema->search_id = PROCESSED;
                     complete = complete && (schema->search_id == PROCESSED);
                 }
