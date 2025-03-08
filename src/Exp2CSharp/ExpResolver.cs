@@ -31,6 +31,13 @@ unsafe class ExpResolver
     }
     """;
 
+    const string BaseInterface = """
+    public interface IStepObj
+    {
+        int line_id { get; set; }
+    }
+    """;
+
     const int NOTKNOWN = 1;
     const int UNPROCESSED = 2;
     const int CANTPROCESS = 3;
@@ -231,6 +238,10 @@ unsafe class ExpResolver
         var logicalEnumFile = Path.Combine(enumOutputDir, "LOGICAL.cs");
         using var logicalWriter = new StreamWriter(logicalEnumFile);
         logicalWriter.WriteLine(LOGICALENUM);
+
+        var baseInterfaceFile = Path.Combine(outputDir, "IStepObj.cs");
+        using var baseInterfaceWriter = new StreamWriter(baseInterfaceFile);
+        baseInterfaceWriter.WriteLine(BaseInterface);
     }
 
     readonly Dictionary<string, string> typeMap = new()
@@ -251,7 +262,6 @@ unsafe class ExpResolver
         writer.WriteLine("global using System.Linq;");
         writer.WriteLine("global using System.Text;");
         writer.WriteLine("global using StepCodeDotNet.Gen;");
-        writer.WriteLine("global using StepCodeDotNet.Base;");
         foreach (var (key, value) in typeMap)
         {
             writer.WriteLine($"global using {key}={value};");
@@ -328,9 +338,9 @@ unsafe class ExpResolver
     string CollectionTypeToString(type_enum collectionType, string contentType) => collectionType switch
     {
         type_enum.bag_ => $"List<{contentType}>",
-        type_enum.set_ => $"HashSet<{contentType}>",
+        type_enum.set_ => $"List<{contentType}>",
         type_enum.list_ => $"List<{contentType}>",
-        type_enum.array_ => $"{contentType}[]",
+        type_enum.array_ => $"List<{contentType}>",
         _ => throw new NotImplementedException()
     };
 
@@ -438,6 +448,10 @@ unsafe class ExpResolver
                 superNames.Add(EntityNameToInterfaceName(super->symbol.Name));
             });
         }
+        else
+        {
+            superNames.Add("IStepObj");
+        }
         if (superNames.Count > 0)
         {
             writer.Write($": {string.Join(", ", superNames)}");
@@ -482,6 +496,9 @@ unsafe class ExpResolver
             writer.WriteLine($"namespace {NameSpace};");
             writer.WriteLine($"public class {entityName}_imp : {entityInterfaceMap[entityName]}");
             writer.WriteLine("{");
+            writer.WriteLine("    public int line_id { get; set; }");
+            var initArugments = new List<(string, string)>();
+            initArugments.Add(("int", "line_id"));
             var allAttributes = ENTITYget_all_attributes(entity);
             if (LISTempty(allAttributes) is false)
             {
@@ -495,13 +512,42 @@ unsafe class ExpResolver
                         if (attrsSet.Add(attrName))
                         {
                             writer.WriteLine($"    public {typeName} {attrName} {{ get; set; }}");
+                            initArugments.Add((typeName, attrName));
                         }
                     }
                 });
             }
+            string initArugmentsString = string.Join(", ", initArugments.Select(x => $"{x.Item1} {x.Item2}=default"));
+            writer.WriteLine($"    public void Init({initArugmentsString})");
+            writer.WriteLine("    {");
+            foreach (var arugment in initArugments)
+            {
+                writer.WriteLine($"        this.{arugment.Item2} = {arugment.Item2};");
+            }
+            writer.WriteLine("    }");
             writer.WriteLine("}");
 
         }
+    }
+
+    void PrintStaticInflect()
+    {
+        var fileName = Path.Combine(outputDir, "StepObjCreater.cs");
+        using var writer = new StreamWriter(fileName);
+        writer.WriteLine($"namespace {NameSpace};");
+        writer.WriteLine("public static class StepObjCreater");
+        writer.WriteLine("{");
+        writer.WriteLine("    public static IStepObj Create(string entityName) => entityName switch");
+        writer.WriteLine("    {");
+        foreach (Scope_* entity in entities)
+        {
+            var entityName = entity->symbol.Name;
+            writer.WriteLine($"        \"{entityName}\" => new {entityName}_imp(),");
+        }
+        writer.WriteLine("        _ => throw new NotImplementedException()");
+        writer.WriteLine("    };");
+        writer.WriteLine("    public static T Create<T>(string entityName) where T : class, IStepObj => Create(entityName) as T;");
+        writer.WriteLine("}");
     }
 
     void PrintSchema(Scope_* express)
@@ -529,6 +575,7 @@ unsafe class ExpResolver
                     SCOPEdo_entities(schema, &de, GenerateEnityInterfaceName);
                     SCOPEdo_entities(schema, &de, PrintEntityDef);
                     PrintEntityImpes();
+                    PrintStaticInflect();
                     PrintAggregateDef();
                     schema->search_id = PROCESSED;
                     complete = complete && (schema->search_id == PROCESSED);
