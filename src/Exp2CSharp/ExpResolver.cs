@@ -18,24 +18,14 @@ unsafe class ExpResolver
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>disable</Nullable>
+        <NoWarn>CS8981</NoWarn>
     </PropertyGroup>
+    <ItemGroup>
+        <Reference Include="StepCodeDotNet.Base">
+            <HintPath>StepCodeDotNet.Base.dll</HintPath>
+        </Reference>
+    </ItemGroup>
     </Project>
-    """;
-
-    const string LOGICALENUM = """
-    public enum LOGICAL
-    {
-        TRUE,
-        FALSE,
-        UNKNOWN
-    }
-    """;
-
-    const string BaseInterface = """
-    public interface IStepObj
-    {
-        int line_id { get; set; }
-    }
     """;
 
     const int NOTKNOWN = 1;
@@ -147,18 +137,29 @@ unsafe class ExpResolver
         });
     }
 
-    string outputDir = string.Empty;
-    string enumOutputDir = string.Empty;
-    string typeOutputDir = string.Empty;
-    string entityOutputDir = string.Empty;
-    string entityImpOutputDir = string.Empty;
-    string aggregateOutputDir = string.Empty;
-    string globalOutputFile = string.Empty;
-    string schemaName = string.Empty;
-    string schemaPath;
+    readonly string outputDir;
+    readonly string enumOutputDir;
+    readonly string typeOutputDir;
+    readonly string entityOutputDir;
+    readonly string entityImpOutputDir;
+    readonly string aggregateOutputDir;
+    readonly string globalOutputFile;
+    readonly string schemaName;
+    readonly string schemaPath;
+    readonly Dictionary<string, List<string>> entitySelectsMap = [];
+    readonly Dictionary<string, string> typeMap = new()
+    {
+        ["REAL"] = "System.Double",
+        ["INTEGER"] = "System.Int32",
+        ["STRING"] = "System.String",
+        ["BOOLEAN"] = "System.Boolean",
+        ["NUMBER"] = "System.Double",
+    };
+    readonly HashSet<nint> aggregates = [];
+    readonly List<nint> entities = [];
+    readonly Dictionary<string, string> entityInterfaceMap = [];
 
     string NameSpace => $"StepCodeDotNet.Gen.{schemaName}";
-    readonly Dictionary<string, List<string>> entitySelectsMap = [];
 
     public ExpResolver(string schemaPath, string outputDir)
     {
@@ -227,6 +228,15 @@ unsafe class ExpResolver
         EXPRESScleanup();
         EXPRESSdestroy(model);
         PrintConstFiles();
+        CopyStepCodeDotNetBase();
+    }
+
+    void CopyStepCodeDotNetBase()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var baseDll = Path.Combine(baseDir, "StepCodeDotNet.Base.dll");
+        var destDll = Path.Combine(outputDir, "StepCodeDotNet.Base.dll");
+        File.Copy(baseDll, destDll, true);
     }
 
     void PrintConstFiles()
@@ -234,24 +244,8 @@ unsafe class ExpResolver
         var csprojFile = Path.Combine(outputDir, $"{schemaName}.csproj");
         using var writer = new StreamWriter(csprojFile);
         writer.WriteLine(CSPROJ);
-
-        var logicalEnumFile = Path.Combine(enumOutputDir, "LOGICAL.cs");
-        using var logicalWriter = new StreamWriter(logicalEnumFile);
-        logicalWriter.WriteLine(LOGICALENUM);
-
-        var baseInterfaceFile = Path.Combine(outputDir, "IStepObj.cs");
-        using var baseInterfaceWriter = new StreamWriter(baseInterfaceFile);
-        baseInterfaceWriter.WriteLine(BaseInterface);
     }
 
-    readonly Dictionary<string, string> typeMap = new()
-    {
-        ["REAL"] = "System.Double",
-        ["INTEGER"] = "System.Int32",
-        ["STRING"] = "System.String",
-        ["BOOLEAN"] = "System.Boolean",
-        ["NUMBER"] = "System.Double",
-    };
 
     void PrintBaseDef()
     {
@@ -262,6 +256,7 @@ unsafe class ExpResolver
         writer.WriteLine("global using System.Linq;");
         writer.WriteLine("global using System.Text;");
         writer.WriteLine("global using StepCodeDotNet.Gen;");
+        writer.WriteLine("global using StepCodeDotNet.Base;");
         foreach (var (key, value) in typeMap)
         {
             writer.WriteLine($"global using {key}={value};");
@@ -305,7 +300,7 @@ unsafe class ExpResolver
         writer.WriteLine("}");
     }
 
-    readonly HashSet<nint> aggregates = [];
+
     void RecordAggregateDef(Scope_* t)
     {
         aggregates.Add((nint)t);
@@ -410,7 +405,6 @@ unsafe class ExpResolver
         }
     }
 
-    unsafe List<nint> entities = new();
 
     string EntityNameToInterfaceName(string entityName)
     {
@@ -418,7 +412,6 @@ unsafe class ExpResolver
         return $"I{name}";
     }
 
-    Dictionary<string, string> entityInterfaceMap = new();
 
     void GenerateEnityInterfaceName(Scope_* entity)
     {
@@ -535,9 +528,9 @@ unsafe class ExpResolver
         var fileName = Path.Combine(outputDir, "StepObjCreater.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
-        writer.WriteLine("public static class StepObjCreater");
+        writer.WriteLine("public class StepObjCreater:IStepObjCreater");
         writer.WriteLine("{");
-        writer.WriteLine("    public static IStepObj Create(string entityName) => entityName switch");
+        writer.WriteLine("    public IStepObj Create(string entityName) => entityName switch");
         writer.WriteLine("    {");
         foreach (Scope_* entity in entities)
         {
@@ -546,7 +539,6 @@ unsafe class ExpResolver
         }
         writer.WriteLine("        _ => throw new NotImplementedException()");
         writer.WriteLine("    };");
-        writer.WriteLine("    public static T Create<T>(string entityName) where T : class, IStepObj => Create(entityName) as T;");
         writer.WriteLine("}");
     }
 

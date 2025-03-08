@@ -9,9 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\StepCodeDotNet.Interop\StepCodeDotNet.Interop.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="**\GEN\**\*.cs" />
+    <ProjectReference Include="../StepCodeDotNet.Interop/StepCodeDotNet.Interop.csproj" />
+    <ProjectReference Include="../StepCodeDotNet.Base/StepCodeDotNet.Base.csproj" />
   </ItemGroup>
 </Project>
