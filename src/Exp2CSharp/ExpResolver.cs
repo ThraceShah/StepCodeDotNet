@@ -530,7 +530,7 @@ unsafe class ExpResolver
         writer.WriteLine($"namespace {NameSpace};");
         writer.WriteLine("public class StepObjCreater:IStepObjCreater");
         writer.WriteLine("{");
-        writer.WriteLine("    public IStepObj Create(string entityName) => entityName switch");
+        writer.WriteLine("    public IStepObj Create(string entityName) => entityName.ToLower() switch");
         writer.WriteLine("    {");
         foreach (Scope_* entity in entities)
         {
@@ -539,6 +539,7 @@ unsafe class ExpResolver
         }
         writer.WriteLine("        _ => throw new NotImplementedException()");
         writer.WriteLine("    };");
+        writer.WriteLine("    public T Create<T>(string entityName) where T : IStepObj => (T)Create(entityName);");
         writer.WriteLine("}");
     }
 
