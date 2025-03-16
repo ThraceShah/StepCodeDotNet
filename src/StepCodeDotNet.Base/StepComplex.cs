@@ -1,10 +1,7 @@
 namespace StepCodeDotNet.Base;
-public class StepComplex : IStepObj
+public abstract class StepComplex : IStepObj
 {
     public int line_id { get; set; }
-    public IStepObj[] complex { get; set; }
-    public void Init(Express expression, Dictionary<int, IStepObj> refMap)
-    {
-        throw new NotImplementedException();
-    }
+    public IExpress[] complex { get; set; }
+    public abstract void Init(IExpress expression, Dictionary<int, IStepObj> refMap);
 }

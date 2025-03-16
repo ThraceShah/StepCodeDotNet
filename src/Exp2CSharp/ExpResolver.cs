@@ -7,7 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using StepCodeDotNet.Base;
 using StepCodeDotNet.Interop;
-using static StepCodeDotNet.Interop.Express;
+using static StepCodeDotNet.Interop.IExpress;
 using static StepCodeDotNet.Interop.ScopeEx;
 using static StepCodeDotNet.Interop.VariableEx;
 namespace Exp2CSharp;
@@ -28,6 +28,119 @@ unsafe partial class ExpResolver
         </Reference>
     </ItemGroup>
     </Project>
+    """;
+
+    const string LISTENTITYINIT = """
+                        if (listExpress.ExpressList.Count == 1)
+                        {
+                            $1 = new List<$2>();
+                            switch (listExpress.ExpressList[0])
+                            {
+                                case RefExpress refExpress:
+                                    var refEntity = refMap[refExpress.RefLineNumber];
+                                    if (refEntity is StepComplex stepComplex)
+                                    {
+                                        foreach (var item in stepComplex.complex)
+                                        {
+                                            if (item is $2 ___value)
+                                            {
+                                                $1.Add(___value);
+                                            }
+                                        }
+                                    }
+                                    else if (refEntity is $2 ___value2)
+                                    {
+                                        $1.Add(___value2);
+                                    }
+                                    else
+                                    {
+                                        throw new NotSupportedException();
+                                    }
+                                    break;
+                                case ListExpress listExpress2:
+                                    $1 = listExpress2.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+                                    break;
+                                case EntityExpress entityExpress2:
+                                    $1 = new List<$2> { StepObjCreator.Instance.Get<$2>(entityExpress2, refMap) };
+                                    break;
+                                default:
+                                    throw new NotSupportedException();
+                            }
+                        }
+                        else
+                        {
+                            $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+                        }
+    """;
+
+    const string STEPOBJCREATORGET = """
+        public T Get<T>(IExpress express, Dictionary<int, IStepObj> refMap)
+        {
+            switch (express)
+            {
+                case IntegerExpress integerExpress:
+                    return (T)(object)(INTEGER)integerExpress.Value;
+                case RealExpress realExpress:
+                    return (T)(object)(REAL)realExpress.Value;
+                case StringExpress stringExpress:
+                    return (T)(object)(STRING)stringExpress.Value;
+                case EnumExpress enumExpress:
+                    return (T)(object)ToEnum(enumExpress.Value);
+                case BooleanExpress booleanExpress:
+                    return (T)(object)(BOOLEAN)booleanExpress.Value;
+                case EntityExpress entityExpress:
+                    if (IsBuiltInType(entityExpress.EntityName))
+                    {
+                        return Get<T>(entityExpress.Args[0], refMap);
+                    }
+                    var r = Create(entityExpress.EntityName);
+                    r.Init(entityExpress, refMap);
+                    return (T)r;
+                case RefExpress refExpress:
+                    return (T)refMap[refExpress.RefLineNumber];
+                case DollarExpress:
+                case AsteriskExpress:
+                    return default;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+        public IStepObj[] CreateStepObjs(List<LineExpress> lineExpresses)
+        {
+            var refMap = new Dictionary<int, IStepObj>();
+            var stepObjs = new IStepObj[lineExpresses.Count];
+            var indexMap = new Dictionary<LineExpress, int>();
+            for (int i = 0; i < lineExpresses.Count; i++)
+            {
+                var lineExpress = lineExpresses[i];
+                switch (lineExpress.Body)
+                {
+                    case EntityExpress entityExpress:
+                        var r = Create(entityExpress.EntityName);
+                        stepObjs[i] = r;
+                        refMap.Add(lineExpress.LineNumber, r);
+                        break;
+                    case ListExpress listExpress:
+                        var complex = new StepComplexImp() { line_id = lineExpress.LineNumber, complex = listExpress.ExpressList.ToArray() };
+                        refMap.Add(lineExpress.LineNumber, complex);
+                        stepObjs[i] = complex;
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
+                indexMap.Add(lineExpress, i);
+            }
+            foreach (var (lineExp, index) in indexMap)
+            {
+                var stepObj = stepObjs[index];
+                if (stepObj is not StepComplex)
+                {
+                    stepObj.Init(lineExp.Body, refMap);
+                }
+            }
+
+            return stepObjs;
+        }
     """;
 
     const int NOTKNOWN = 1;
@@ -158,12 +271,16 @@ unsafe partial class ExpResolver
         ["NUMBER"] = "System.Double",
     };
     readonly HashSet<nint> aggregates = [];
+    readonly HashSet<nint> selects = [];
     readonly List<nint> entities = [];
     readonly Dictionary<string, string> entityInterfaceMap = [];
     readonly HashSet<string> enumNames = [];
     readonly Dictionary<string, string> enumValueMap = [];
     readonly HashSet<string> builtInTypes = ["REAL", "INTEGER", "STRING", "BOOLEAN", "NUMBER"];
     readonly Dictionary<string, List<string>> entityArgTypesMap = [];
+    readonly HashSet<string> complexProperties = [];
+    readonly Dictionary<string, List<string>> globalUsingTypesMap = [];
+    readonly Regex listRegex = ListRegex();
 
     string NameSpace => $"StepCodeDotNet.Gen.{schemaName}";
 
@@ -229,7 +346,7 @@ unsafe partial class ExpResolver
             Console.WriteLine("Error resolving schema");
             return;
         }
-        PrintBaseDef();
+        PrintGlobalDef();
         PrintSchema(model);
         EXPRESScleanup();
         EXPRESSdestroy(model);
@@ -253,7 +370,7 @@ unsafe partial class ExpResolver
     }
 
 
-    void PrintBaseDef()
+    void PrintGlobalDef()
     {
         using var writer = new StreamWriter(globalOutputFile);
         writer.WriteLine("global using System;");
@@ -263,10 +380,58 @@ unsafe partial class ExpResolver
         writer.WriteLine("global using System.Text;");
         writer.WriteLine("global using StepCodeDotNet.Gen;");
         writer.WriteLine("global using StepCodeDotNet.Base;");
+    }
+
+    void PrintBaseDef()
+    {
         foreach (var (key, value) in typeMap)
         {
-            writer.WriteLine($"global using {key}={value};");
+            //writer.WriteLine($"global using {key}={value};");
+            using var entityWriter = new StreamWriter(Path.Combine(entityImpOutputDir, $"{key}.cs"));
+            entityWriter.WriteLine($"namespace {NameSpace};");
+            HashSet<string> superNames = [];
+            if (entitySelectsMap.TryGetValue(key, out var selects))
+            {
+                foreach (var select in selects)
+                {
+                    superNames.Add(select);
+                }
+            }
+            if (globalUsingTypesMap.TryGetValue(key, out var types))
+            {
+                foreach (var type in types)
+                {
+                    if (entitySelectsMap.TryGetValue(type, out var typeSelects))
+                    {
+                        foreach (var select in typeSelects)
+                        {
+                            superNames.Add(select);
+                        }
+                    }
+
+                }
+            }
+            if (superNames.Count > 0)
+            {
+                entityWriter.WriteLine($"public struct {key} : {string.Join(", ", superNames)}");
+            }
+            else
+            {
+                entityWriter.WriteLine($"public struct {key}");
+            }
+            entityWriter.WriteLine("{");
+            entityWriter.WriteLine($"    public {value} Value;");
+            entityWriter.WriteLine($"     public static implicit operator {key}({value} value)");
+            entityWriter.WriteLine("    {");
+            entityWriter.WriteLine("        return new() { Value = value };");
+            entityWriter.WriteLine("    }");
+            entityWriter.WriteLine($"    public static implicit operator {value}({key} obj)");
+            entityWriter.WriteLine("    {");
+            entityWriter.WriteLine("        return obj.Value;");
+            entityWriter.WriteLine("    }");
+            entityWriter.WriteLine("}");
         }
+
     }
 
     void PrintEnumDef(Scope_* t)
@@ -287,27 +452,39 @@ unsafe partial class ExpResolver
         writer.WriteLine("}");
     }
 
-    void PrintSelectDef(Scope_* t)
+    void PrintSelectDef()
     {
-        var selectName = t->symbol.Name;
-        var fileName = Path.Combine(typeOutputDir, $"{selectName}.cs");
-        using var writer = new StreamWriter(fileName);
-        writer.WriteLine($"namespace {NameSpace};");
-        writer.WriteLine($"public interface {selectName}");
-        writer.WriteLine("{");
-        LISTdo_links(TYPEget_body(t)->list, link =>
+        foreach (Scope_* t in selects)
         {
-            var expr = (Expression_*)link->data;
-            var key = expr->symbol.Name;
-            if (!entitySelectsMap.ContainsKey(key))
+            var selectName = t->symbol.Name;
+            var fileName = Path.Combine(typeOutputDir, $"{selectName}.cs");
+            using var writer = new StreamWriter(fileName);
+            writer.WriteLine($"namespace {NameSpace};");
+            writer.Write($"public interface {selectName}");
+            if (entitySelectsMap.TryGetValue(selectName, out var selects))
             {
-                entitySelectsMap[key] = [];
+                writer.Write($": {string.Join(", ", selects)}");
             }
-            entitySelectsMap[key].Add(selectName);
-        });
-        writer.WriteLine("}");
+            writer.WriteLine();
+            writer.WriteLine("{");
+            LISTdo_links(TYPEget_body(t)->list, link =>
+            {
+                var expr = (Expression_*)link->data;
+                var key = expr->symbol.Name;
+                if (!entitySelectsMap.ContainsKey(key))
+                {
+                    entitySelectsMap[key] = [];
+                }
+                entitySelectsMap[key].Add(selectName);
+            });
+            writer.WriteLine("}");
+        }
     }
 
+    void RecordSelectDef(Scope_* t)
+    {
+        selects.Add((nint)t);
+    }
 
     void RecordAggregateDef(Scope_* t)
     {
@@ -385,12 +562,15 @@ unsafe partial class ExpResolver
     {
         using var globalWriter = new StreamWriter(globalOutputFile, true);
         var baseType = BaseTypeToString(type);
-        string typeString = baseType;
-        while (typeMap.TryGetValue(typeString, out baseType))
+        if (globalUsingTypesMap.TryGetValue(baseType, out var types))
         {
-            typeString = baseType;
+            types.Add(type->symbol.Name);
         }
-        globalWriter.WriteLine($"global using {type->symbol.Name}={typeString};");
+        else
+        {
+            globalUsingTypesMap[baseType] = [type->symbol.Name];
+        }
+        globalWriter.WriteLine($"global using {type->symbol.Name}=StepCodeDotNet.Gen.ap203.{baseType};");
     }
 
     void PrintTypeDef(Scope_* type)
@@ -401,7 +581,7 @@ unsafe partial class ExpResolver
         }
         else if (TYPEis_select(type))
         {
-            PrintSelectDef(type);
+            RecordSelectDef(type);
         }
         else if (TYPEis_aggregate(type))
         {
@@ -470,6 +650,7 @@ unsafe partial class ExpResolver
                     var typeName = GetAttrTypeName(GetTypeNameString(attr->type));
                     var attrName = attr->name->symbol.Name;
                     writer.WriteLine($"    {typeName} {attrName} {{ get; set; }}");
+                    complexProperties.Add($"{typeName} {interfaceName}.{attrName} {{ get; set; }}");
                 }
             });
         }
@@ -487,51 +668,43 @@ unsafe partial class ExpResolver
         }
         return typeName;
     }
-    Regex listRegex = ListRegex();
+
+    void PrintComplexImpDef()
+    {
+        var fileName = Path.Combine(outputDir, "StepComplexImp.cs");
+        using var writer = new StreamWriter(fileName);
+        writer.WriteLine($"namespace {NameSpace};");
+        writer.Write("public class StepComplexImp : StepComplex");
+        var intefaces = new HashSet<string>();
+        foreach (var (key, value) in entityInterfaceMap)
+        {
+            intefaces.Add(value);
+        }
+        foreach (var (key, value) in entitySelectsMap)
+        {
+            foreach (var select in value)
+            {
+                intefaces.Add(select);
+            }
+        }
+        if (intefaces.Count > 0)
+        {
+            writer.Write($",{string.Join(", ", intefaces)}");
+        }
+        writer.WriteLine();
+        writer.WriteLine("{");
+        foreach (var complexProperty in complexProperties)
+        {
+            writer.WriteLine($"    {complexProperty}");
+        }
+        writer.WriteLine("    public override void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
+        writer.WriteLine("    {");
+        writer.WriteLine("        throw new NotImplementedException();");
+        writer.WriteLine("    }");
+        writer.WriteLine("}");
+    }
 
 
-    const string LISTENTITYINIT = """
-                        if (listExpress.ExpressList.Count == 1)
-                        {
-                            $1 = new List<$2>();
-                            switch (listExpress.ExpressList[0])
-                            {
-                                case RefExpress refExpress:
-                                    var refEntity = refMap[refExpress.RefLineNumber];
-                                    if (refEntity is StepComplex stepComplex)
-                                    {
-                                        foreach (var item in stepComplex.complex)
-                                        {
-                                            if (item is $2 ___value)
-                                            {
-                                                $1.Add(___value);
-                                            }
-                                        }
-                                    }
-                                    else if (refEntity is $2 ___value2)
-                                    {
-                                        $1.Add(___value2);
-                                    }
-                                    else
-                                    {
-                                        throw new NotSupportedException();
-                                    }
-                                    break;
-                                case ListExpress listExpress2:
-                                    $1 = listExpress2.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
-                                    break;
-                                case EntityExpress entityExpress2:
-                                    $1 = new List<$2> { StepObjCreator.Instance.Get<$2>(entityExpress2, refMap) };
-                                    break;
-                                default:
-                                    throw new NotSupportedException();
-                            }
-                        }
-                        else
-                        {
-                            $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
-                        }
-    """;
 
     void PrintEntityImpes()
     {
@@ -579,7 +752,7 @@ unsafe partial class ExpResolver
                 }
             }
             entityArgTypesMap[entityName] = argsTypes;
-            writer.WriteLine("    public IStepObj[] complex { get; set; }");
+            writer.WriteLine("    public IExpress[] complex { get; set; }");
             string initArugmentsString = string.Join(", ", initArugments.Select(x => $"{x.Item1} {x.Item2} = default"));
             writer.WriteLine($"    public void Init({initArugmentsString})");
             writer.WriteLine("    {");
@@ -613,11 +786,11 @@ unsafe partial class ExpResolver
             writer.WriteLine("    }");
             writer.WriteLine($"    public static implicit operator StepComplex({entityName}_imp obj)");
             writer.WriteLine("    {");
-            writer.WriteLine($"        return new StepComplex() {{ line_id = obj.line_id, complex = obj.complex }};");
+            writer.WriteLine($"        return new StepComplexImp() {{ line_id = obj.line_id, complex = obj.complex }};");
             writer.WriteLine("    }");
 
 
-            writer.WriteLine("    public void Init(Express expression, Dictionary<int, IStepObj> refMap)");
+            writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
             writer.WriteLine("    {");
             writer.WriteLine("        switch (expression)");
             writer.WriteLine("        {");
@@ -636,8 +809,6 @@ unsafe partial class ExpResolver
                 {
                     var match = listRegex.Match(arugment.Item1);
                     var typeName = match.Groups[1].Value;
-                    //                    {
-                    //var listExpress = (ListExpress)argExps[0];
                     writer.WriteLine("                {");
                     writer.WriteLine($"                    var listExpress = (ListExpress)argExps[{x}];");
                     if (builtInTypes.Contains(typeName))
@@ -650,8 +821,6 @@ unsafe partial class ExpResolver
 
                     }
                     writer.WriteLine("                }");
-
-                    // writer.WriteLine($"                this.{arugment.Item2} = ((ListExpress)argExps[{x}]).ExpressList.Select(x=>StepObjCreator.Instance.Get<{typeName}>(x,refMap)).ToList();");
                 }
                 else
                 {
@@ -662,12 +831,7 @@ unsafe partial class ExpResolver
             writer.WriteLine("            }");
             writer.WriteLine("            case ListExpress listExpress:");
             writer.WriteLine("            {");
-            writer.WriteLine("                var complex = new List<IStepObj>();");
-            writer.WriteLine("                foreach (var item in listExpress.ExpressList)");
-            writer.WriteLine("                {");
-            writer.WriteLine("                    complex.Add(StepObjCreator.Instance.Create(((EntityExpress)item).EntityName));");
-            writer.WriteLine("                }");
-            writer.WriteLine("                this.complex = complex.ToArray();");
+            writer.WriteLine("                this.complex=listExpress.ExpressList.ToArray();");
             writer.WriteLine("                break;");
             writer.WriteLine("            }");
             writer.WriteLine("            default:");
@@ -679,82 +843,6 @@ unsafe partial class ExpResolver
         }
     }
 
-    const string STEPOBJCREATORGET = """
-        public T Get<T>(Express express, Dictionary<int, IStepObj> refMap)
-        {
-            switch (express)
-            {
-                case IntegerExpress integerExpress:
-                    return (T)(object)integerExpress.Value;
-                case RealExpress realExpress:
-                    return (T)(object)realExpress.Value;
-                case StringExpress stringExpress:
-                    return (T)(object)stringExpress.Value;
-                case EnumExpress enumExpress:
-                    return (T)(object)ToEnum(enumExpress.Value);
-                case EntityExpress entityExpress:
-                    var r = Create(entityExpress.EntityName);
-                    r.Init(entityExpress, refMap);
-                    return (T)r;
-                case RefExpress refExpress:
-                    return (T)refMap[refExpress.RefLineNumber];
-                case DollarExpress:
-                case AsteriskExpress:
-                    return default;
-                default:
-                    throw new NotImplementedException();
-            }
-        }
-        public IStepObj[] CreateStepObjs(List<LineExpress> lineExpresses)
-        {
-            var refMap = new Dictionary<int, IStepObj>();
-            var stepObjs = new IStepObj[lineExpresses.Count];
-            var indexMap = new Dictionary<LineExpress, int>();
-            for (int i = 0; i < lineExpresses.Count; i++)
-            {
-                var lineExpress = lineExpresses[i];
-                switch (lineExpress.body)
-                {
-                    case EntityExpress entityExpress:
-                        var r = Create(entityExpress.EntityName);
-                        stepObjs[i] = r;
-                        refMap.Add(lineExpress.LineNumber, r);
-                        break;
-                    case ListExpress listExpress:
-                        var complex = new StepComplex() { line_id = lineExpress.LineNumber, complex = null };
-                        refMap.Add(lineExpress.LineNumber, complex);
-                        stepObjs[i] = complex;
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-                indexMap.Add(lineExpress, i);
-            }
-            foreach (var (lineExp, index) in indexMap)
-            {
-                var stepObj = stepObjs[index];
-                if (stepObj is StepComplex complex)
-                {
-                    var list = new List<IStepObj>();
-                    foreach (EntityExpress item in ((ListExpress)lineExp.body).ExpressList)
-                    {
-                        var obj = Create(item.EntityName);
-                        obj.Init(item, refMap);
-                    }
-                }
-            }
-            foreach (var (lineExp, index) in indexMap)
-            {
-                var stepObj = stepObjs[index];
-                if (stepObj is not StepComplex)
-                {
-                    stepObj.Init(lineExp.body, refMap);
-                }
-            }
-
-            return stepObjs;
-        }
-    """;
 
     void PrintStaticInflect()
     {
@@ -762,7 +850,6 @@ unsafe partial class ExpResolver
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
         writer.WriteLine("using System.Collections.Frozen;");
-        // writer.WriteLine("using StepCodeDotNet.Base;");
         writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
         writer.WriteLine("    private static readonly FrozenDictionary<string,FrozenSet<string>> initArgTypes;");
@@ -841,11 +928,14 @@ unsafe partial class ExpResolver
                 {
                     unsetObjs(schema);
                     SCOPEdo_types(schema, &de, PrintTypeDef);
+                    PrintSelectDef();
                     SCOPEdo_entities(schema, &de, GenerateEnityInterfaceName);
                     SCOPEdo_entities(schema, &de, PrintEntityDef);
                     PrintEntityImpes();
                     PrintStaticInflect();
                     PrintAggregateDef();
+                    PrintComplexImpDef();
+                    PrintBaseDef();
                     schema->search_id = PROCESSED;
                     complete = complete && (schema->search_id == PROCESSED);
                 }

@@ -5,7 +5,7 @@ using System.Text;
 namespace StepCodeDotNet.Interop;
 #pragma warning disable CS8603 // Possible null reference return.
 
-public static unsafe partial class Express
+public static unsafe partial class IExpress
 {
     static readonly nint ExpressHandle;
     static readonly sbyte* __ERROR_buffer_errors;
@@ -68,7 +68,7 @@ public static unsafe partial class Express
 
     public static bool ERRORoccurred => *__ERRORoccurred != 0;
 
-    static Express()
+    static IExpress()
     {
         ExpressHandle = NativeLibrary.Load("express");
         __ERROR_buffer_errors = (sbyte*)NativeLibrary.GetExport(ExpressHandle, "__ERROR_buffer_errors");
@@ -416,14 +416,14 @@ public static unsafe partial class Express
     public static Scope_* EXPRESS_NULL => (Scope_*)(0);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    [return: NativeTypeName("Express")]
+    [return: NativeTypeName("IExpress")]
     public static extern Scope_* EXPRESScreate();
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void EXPRESSdestroy([NativeTypeName("Express")] Scope_* param0);
+    public static extern void EXPRESSdestroy([NativeTypeName("IExpress")] Scope_* param0);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void EXPRESSparse([NativeTypeName("Express")] Scope_* param0, [NativeTypeName("FILE *")] _iobuf* param1, [NativeTypeName("char *")] sbyte* param2);
+    public static extern void EXPRESSparse([NativeTypeName("IExpress")] Scope_* param0, [NativeTypeName("FILE *")] _iobuf* param1, [NativeTypeName("char *")] sbyte* param2);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void EXPRESSinitialize();
@@ -432,16 +432,16 @@ public static unsafe partial class Express
     public static extern void EXPRESScleanup();
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void EXPRESSresolve([NativeTypeName("Express")] Scope_* param0);
+    public static extern void EXPRESSresolve([NativeTypeName("IExpress")] Scope_* param0);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern int EXPRESS_fail([NativeTypeName("Express")] Scope_* model);
+    public static extern int EXPRESS_fail([NativeTypeName("IExpress")] Scope_* model);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern int EXPRESS_succeed([NativeTypeName("Express")] Scope_* model);
+    public static extern int EXPRESS_succeed([NativeTypeName("IExpress")] Scope_* model);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void build_complex([NativeTypeName("Express")] Scope_* param0);
+    public static extern void build_complex([NativeTypeName("IExpress")] Scope_* param0);
 
     [DllImport("express", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void FACTORYinitialize();

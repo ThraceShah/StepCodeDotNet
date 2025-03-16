@@ -95,38 +95,61 @@ public unsafe static class ScopeEx
 
     public static List<nint> ENTITYget_all_attributes2(Scope_* scope)
     {
-        var list = new List<nint>();
-        (*scope->u.entity->attributes).For<Scope_>(attr =>
-        {
-            if (attr != null)
-            {
-                list.Add((nint)attr);
-            }
-        });
+        // var list = new List<nint>();
+        // var stack = new Stack<nint>();
+        // {
+        //     var supertypes = scope->u.entity->supertypes;
+        //     if (supertypes != null)
+        //     {
+        //         (*supertypes).For<Scope_>(sup =>
+        //         {
+        //             if (sup != null)
+        //             {
+        //                 stack.Push((nint)sup);
+        //             }
+        //         });
+        //     }
+        // }
+
+        // while (stack.Count > 0)
+        // {
+        //     var sup = (Scope_*)stack.Pop();
+        //     (*sup->u.entity->attributes).For<Scope_>(attr => list.Add((nint)attr));
+        //     var supertypes = sup->u.entity->supertypes;
+        //     if (supertypes == null)
+        //     {
+        //         continue;
+        //     }
+        //     (*supertypes).For<Scope_>(sub => stack.Push((nint)sub));
+        // }
+        // (*scope->u.entity->attributes).For<Scope_>(attr =>
+        // {
+        //     if (attr != null)
+        //     {
+        //         list.Add((nint)attr);
+        //     }
+        // });
+        // return list;
+
         var stack = new Stack<nint>();
-        {
-            var supertypes = scope->u.entity->supertypes;
-            if (supertypes != null)
-            {
-                (*supertypes).For<Scope_>(sup =>
-                {
-                    if (sup != null)
-                    {
-                        stack.Push((nint)sup);
-                    }
-                });
-            }
-        }
+        var attrs = new Stack<nint>();
+        stack.Push((nint)scope);
         while (stack.Count > 0)
         {
             var sup = (Scope_*)stack.Pop();
-            (*sup->u.entity->attributes).For<Scope_>(attr => list.Add((nint)attr));
+            attrs.Push((nint)sup->u.entity->attributes);
             var supertypes = sup->u.entity->supertypes;
             if (supertypes == null)
             {
                 continue;
             }
             (*supertypes).For<Scope_>(sub => stack.Push((nint)sub));
+        }
+        var list = new List<nint>();
+        while (attrs.Count > 0)
+        {
+            var attr = (Linked_List_*)attrs.Pop();
+            (*attr).For<Scope_>(a => list.Add((nint)a));
         }
         return list;
     }

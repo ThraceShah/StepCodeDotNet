@@ -19,7 +19,7 @@ public partial class StepResolver(IStepObjCreator creater)
 //         Dictionary<int, IStepObj> lineObjMap = new();
 //         foreach (var lineExpress in expressList)
 //         {
-//             switch (lineExpress.body)
+//             switch (lineExpress.Body)
 //             {
 //                 case EntityExpress entityExpress:
 //                     {
@@ -109,7 +109,7 @@ public partial class StepResolver(IStepObjCreator creater)
 //     private void InitStepComplexObjs(LineExpress lineExp, Dictionary<int, IStepObj> lineExpMap)
 //     {
 //         var stepObj = (StepComplex)lineExpMap[lineExp.LineNumber];
-//         var listExpress = (ListExpress)lineExp.body;
+//         var listExpress = (ListExpress)lineExp.Body;
 //         var complexObjs = new IStepObj[listExpress.ExpressList.Count];
 //         for (int i = 0; i < listExpress.ExpressList.Count; i++)
 //         {

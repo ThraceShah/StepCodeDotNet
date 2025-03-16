@@ -19,18 +19,18 @@ public record AsteriskToken : IStepToken;
 public record BooleanToken(bool Value) : IStepToken;
 public record DollarToken : IStepToken;
 
-public interface Express;
-public record StringExpress(string Value) : Express;
-public record IntegerExpress(int Value) : Express;
-public record RealExpress(double Value) : Express;
-public record BooleanExpress(bool Value) : Express;
-public record EnumExpress(string Value) : Express;
-public record EntityExpress(string EntityName, List<Express> Args) : Express;
-public record AsteriskExpress : Express;
-public record ListExpress(List<Express> ExpressList) : Express;
-public record RefExpress(int RefLineNumber) : Express;
-public record LineExpress(int LineNumber, Express body) : Express;
-public record DollarExpress : Express;
+public interface IExpress;
+public record StringExpress(string Value) : IExpress;
+public record IntegerExpress(int Value) : IExpress;
+public record RealExpress(double Value) : IExpress;
+public record BooleanExpress(bool Value) : IExpress;
+public record EnumExpress(string Value) : IExpress;
+public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
+public record AsteriskExpress : IExpress;
+public record ListExpress(List<IExpress> ExpressList) : IExpress;
+public record RefExpress(int RefLineNumber) : IExpress;
+public record LineExpress(int LineNumber, IExpress Body) : IExpress;
+public record DollarExpress : IExpress;
 
 public partial class StepParser(IStepObjCreator creater)
 {
@@ -50,7 +50,7 @@ public partial class StepParser(IStepObjCreator creater)
 
     private (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
     {
-        var result = new List<Express>();
+        var result = new List<IExpress>();
         for (int i = 0; i < listTokens.Length; i++)
         {
             switch (listTokens[i])
@@ -118,7 +118,7 @@ public partial class StepParser(IStepObjCreator creater)
             throw new Exception("Invalid entity");
         }
         var entityName = entity.EntityName;
-        var args = new List<Express>();
+        var args = new List<IExpress>();
         for (int i = 2; i < entityTokens.Length; i++)
         {
             switch (entityTokens[i])
@@ -327,7 +327,6 @@ public partial class StepParser(IStepObjCreator creater)
 
     private (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<char> line)
     {
-        //use regex to get number
         var number = NumberRegex().Match(line.ToString());
         var str = number.Value;
         if (str.Contains('.'))
@@ -338,27 +337,6 @@ public partial class StepParser(IStepObjCreator creater)
         {
             return (new IntegerToken(int.Parse(str)), number.Length);
         }
-
-        // StringBuilder sb = new();
-        // var endIndex = 0;
-        // for (int i = 0; i < line.Length; i++)
-        // {
-        //     if (!char.IsDigit(line[i]) && line[i] != '.' && line[i] != 'E' && line[i] != '-')
-        //     {
-        //         endIndex = i - 1;
-        //         break;
-        //     }
-        //     sb.Append(line[i]);
-        // }
-        // var str = sb.ToString();
-        // if (str.Contains('.'))
-        // {
-        //     return (new RealToken(double.Parse(str)), endIndex);
-        // }
-        // else
-        // {
-        //     return (new IntegerToken(int.Parse(str)), endIndex);
-        // }
     }
 
     private (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<char> line)

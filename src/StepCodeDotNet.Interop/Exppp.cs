@@ -5,7 +5,7 @@ namespace StepCodeDotNet.Interop;
 public static unsafe partial class Exppp
 {
     [DllImport("exppp", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-    public static extern void EXPRESSout([NativeTypeName("Express")] Scope_* e);
+    public static extern void EXPRESSout([NativeTypeName("IExpress")] Scope_* e);
 
     [DllImport("exppp", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     public static extern void ENTITYout([NativeTypeName("Entity")] Scope_* e);

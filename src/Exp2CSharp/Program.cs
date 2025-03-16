@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using StepCodeDotNet.Interop;
-using static StepCodeDotNet.Interop.Express;
+using static StepCodeDotNet.Interop.IExpress;
 using static StepCodeDotNet.Interop.ScopeEx;
 using static StepCodeDotNet.Interop.VariableEx;
 namespace Exp2CSharp;
