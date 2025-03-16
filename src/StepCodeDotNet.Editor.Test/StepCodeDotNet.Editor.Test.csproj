@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\StepCodeDotNet.Editor\StepCodeDotNet.Editor.csproj" />
+    <ProjectReference Include="..\StepCodeDotNet.Base\StepCodeDotNet.Base.csproj" />
     <ProjectReference Include="..\StepCodeDotNet.Gen\ap203\ap203.csproj" />
   </ItemGroup>
 

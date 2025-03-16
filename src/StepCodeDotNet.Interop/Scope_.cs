@@ -92,6 +92,45 @@ public unsafe static class ScopeEx
 
     */
 
+
+    public static List<nint> ENTITYget_all_attributes2(Scope_* scope)
+    {
+        var list = new List<nint>();
+        (*scope->u.entity->attributes).For<Scope_>(attr =>
+        {
+            if (attr != null)
+            {
+                list.Add((nint)attr);
+            }
+        });
+        var stack = new Stack<nint>();
+        {
+            var supertypes = scope->u.entity->supertypes;
+            if (supertypes != null)
+            {
+                (*supertypes).For<Scope_>(sup =>
+                {
+                    if (sup != null)
+                    {
+                        stack.Push((nint)sup);
+                    }
+                });
+            }
+        }
+        while (stack.Count > 0)
+        {
+            var sup = (Scope_*)stack.Pop();
+            (*sup->u.entity->attributes).For<Scope_>(attr => list.Add((nint)attr));
+            var supertypes = sup->u.entity->supertypes;
+            if (supertypes == null)
+            {
+                continue;
+            }
+            (*supertypes).For<Scope_>(sub => stack.Push((nint)sub));
+        }
+        return list;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Linked_List_* ENTITYget_attributes(Scope_* scope)
     {

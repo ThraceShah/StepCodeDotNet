@@ -4,13 +4,15 @@ using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
+using StepCodeDotNet.Base;
 using StepCodeDotNet.Interop;
 using static StepCodeDotNet.Interop.Express;
 using static StepCodeDotNet.Interop.ScopeEx;
 using static StepCodeDotNet.Interop.VariableEx;
 namespace Exp2CSharp;
 
-unsafe class ExpResolver
+unsafe partial class ExpResolver
 {
     const string CSPROJ = """
     <Project Sdk="Microsoft.NET.Sdk">
@@ -158,6 +160,10 @@ unsafe class ExpResolver
     readonly HashSet<nint> aggregates = [];
     readonly List<nint> entities = [];
     readonly Dictionary<string, string> entityInterfaceMap = [];
+    readonly HashSet<string> enumNames = [];
+    readonly Dictionary<string, string> enumValueMap = [];
+    readonly HashSet<string> builtInTypes = ["REAL", "INTEGER", "STRING", "BOOLEAN", "NUMBER"];
+    readonly Dictionary<string, List<string>> entityArgTypesMap = [];
 
     string NameSpace => $"StepCodeDotNet.Gen.{schemaName}";
 
@@ -266,6 +272,7 @@ unsafe class ExpResolver
     void PrintEnumDef(Scope_* t)
     {
         var enumName = t->symbol.Name;
+        enumNames.Add(enumName);
         var fileName = Path.Combine(enumOutputDir, $"{enumName}.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
@@ -275,6 +282,7 @@ unsafe class ExpResolver
         {
             var expr = (Expression_*)link->data;
             writer.WriteLine($"    {expr->symbol.Name},");
+            enumValueMap[expr->symbol.Name] = $"{enumName}.{expr->symbol.Name}";
         });
         writer.WriteLine("}");
     }
@@ -401,6 +409,7 @@ unsafe class ExpResolver
         }
         else
         {
+            builtInTypes.Add(type->symbol.Name);
             PrintUsingTypeDef(type);
         }
     }
@@ -478,6 +487,51 @@ unsafe class ExpResolver
         }
         return typeName;
     }
+    Regex listRegex = ListRegex();
+
+
+    const string LISTENTITYINIT = """
+                        if (listExpress.ExpressList.Count == 1)
+                        {
+                            $1 = new List<$2>();
+                            switch (listExpress.ExpressList[0])
+                            {
+                                case RefExpress refExpress:
+                                    var refEntity = refMap[refExpress.RefLineNumber];
+                                    if (refEntity is StepComplex stepComplex)
+                                    {
+                                        foreach (var item in stepComplex.complex)
+                                        {
+                                            if (item is $2 ___value)
+                                            {
+                                                $1.Add(___value);
+                                            }
+                                        }
+                                    }
+                                    else if (refEntity is $2 ___value2)
+                                    {
+                                        $1.Add(___value2);
+                                    }
+                                    else
+                                    {
+                                        throw new NotSupportedException();
+                                    }
+                                    break;
+                                case ListExpress listExpress2:
+                                    $1 = listExpress2.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+                                    break;
+                                case EntityExpress entityExpress2:
+                                    $1 = new List<$2> { StepObjCreator.Instance.Get<$2>(entityExpress2, refMap) };
+                                    break;
+                                default:
+                                    throw new NotSupportedException();
+                            }
+                        }
+                        else
+                        {
+                            $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+                        }
+    """;
 
     void PrintEntityImpes()
     {
@@ -490,27 +544,43 @@ unsafe class ExpResolver
             writer.WriteLine($"public class {entityName}_imp : {entityInterfaceMap[entityName]}");
             writer.WriteLine("{");
             writer.WriteLine("    public int line_id { get; set; }");
-            var initArugments = new List<(string, string)>();
-            initArugments.Add(("int", "line_id"));
-            var allAttributes = ENTITYget_all_attributes(entity);
-            if (LISTempty(allAttributes) is false)
+            var initArugments = new List<(string, string)>
             {
-                var attrsSet = new HashSet<string>();
-                (*allAttributes).For<Variable_>(attr =>
+                ("int", "line_id")
+            };
+            var initArugments2 = new List<(string, string)>
+            {
+                ("int", "line_id")
+            };
+            var argsTypes = new List<string>();
+            argsTypes.Add("Int32");
+            var allAttributes = ENTITYget_all_attributes2(entity);
+            var attrsSet = new HashSet<string>();
+            foreach (Variable_* attr in allAttributes)
+            {
+                if (VARis_derived(attr) is false)
                 {
-                    if (VARis_derived(attr) is false)
+                    var typeName = GetAttrTypeName(GetTypeNameString(attr->type));
+                    var attrName = attr->name->symbol.Name;
+                    if (attrsSet.Add(attrName))
                     {
-                        var typeName = GetAttrTypeName(GetTypeNameString(attr->type));
-                        var attrName = attr->name->symbol.Name;
-                        if (attrsSet.Add(attrName))
+                        writer.WriteLine($"    public {typeName} {attrName} {{ get; set; }}");
+                        initArugments.Add((typeName, attrName));
+                        if (enumNames.Contains(typeName))
                         {
-                            writer.WriteLine($"    public {typeName} {attrName} {{ get; set; }}");
-                            initArugments.Add((typeName, attrName));
+                            initArugments2.Add(("int", attrName));
                         }
+                        else
+                        {
+                            initArugments2.Add((typeName, attrName));
+                        }
+                        argsTypes.Add(typeName);
                     }
-                });
+                }
             }
-            string initArugmentsString = string.Join(", ", initArugments.Select(x => $"{x.Item1} {x.Item2}=default"));
+            entityArgTypesMap[entityName] = argsTypes;
+            writer.WriteLine("    public IStepObj[] complex { get; set; }");
+            string initArugmentsString = string.Join(", ", initArugments.Select(x => $"{x.Item1} {x.Item2} = default"));
             writer.WriteLine($"    public void Init({initArugmentsString})");
             writer.WriteLine("    {");
             foreach (var arugment in initArugments)
@@ -518,18 +588,203 @@ unsafe class ExpResolver
                 writer.WriteLine($"        this.{arugment.Item2} = {arugment.Item2};");
             }
             writer.WriteLine("    }");
+            string initArugmentsString2 = string.Join(", ", initArugments2.Select(x => $"{x.Item1} {x.Item2} = default"));
+            if (initArugmentsString2 != initArugmentsString)
+            {
+                writer.WriteLine($"    public void Init({initArugmentsString2})");
+                writer.WriteLine("    {");
+                foreach (var arugment in initArugments)
+                {
+                    if (enumNames.Contains(arugment.Item1))
+                    {
+                        writer.WriteLine($"        this.{arugment.Item2} = ({arugment.Item1}){arugment.Item2};");
+                    }
+                    else
+                    {
+                        writer.WriteLine($"        this.{arugment.Item2} = {arugment.Item2};");
+                    }
+                }
+                writer.WriteLine("    }");
+            }
+
+            writer.WriteLine($"    public static implicit operator {entityName}_imp(StepComplex complex)");
+            writer.WriteLine("    {");
+            writer.WriteLine($"        return new {entityName}_imp() {{ line_id = complex.line_id, complex = complex.complex }};");
+            writer.WriteLine("    }");
+            writer.WriteLine($"    public static implicit operator StepComplex({entityName}_imp obj)");
+            writer.WriteLine("    {");
+            writer.WriteLine($"        return new StepComplex() {{ line_id = obj.line_id, complex = obj.complex }};");
+            writer.WriteLine("    }");
+
+
+            writer.WriteLine("    public void Init(Express expression, Dictionary<int, IStepObj> refMap)");
+            writer.WriteLine("    {");
+            writer.WriteLine("        switch (expression)");
+            writer.WriteLine("        {");
+            writer.WriteLine("            case EntityExpress entityExpress:");
+            writer.WriteLine("            {");
+            writer.WriteLine("                var argExps = entityExpress.Args;");
+            for (int i = 1; i < initArugments.Count; i++)
+            {
+                var arugment = initArugments[i];
+                int x = i - 1;
+                writer.WriteLine($"                if({x} >= argExps.Count)");
+                writer.WriteLine("                {");
+                writer.WriteLine($"                    break;");
+                writer.WriteLine("                }");
+                if (arugment.Item1.StartsWith("List<"))
+                {
+                    var match = listRegex.Match(arugment.Item1);
+                    var typeName = match.Groups[1].Value;
+                    //                    {
+                    //var listExpress = (ListExpress)argExps[0];
+                    writer.WriteLine("                {");
+                    writer.WriteLine($"                    var listExpress = (ListExpress)argExps[{x}];");
+                    if (builtInTypes.Contains(typeName))
+                    {
+                        writer.WriteLine($"                this.{arugment.Item2} = ((ListExpress)argExps[{x}]).ExpressList.Select(x=>StepObjCreator.Instance.Get<{typeName}>(x,refMap)).ToList();");
+                    }
+                    else
+                    {
+                        writer.WriteLine(LISTENTITYINIT.Replace("$1", $"this.{arugment.Item2}").Replace("$2", typeName));
+
+                    }
+                    writer.WriteLine("                }");
+
+                    // writer.WriteLine($"                this.{arugment.Item2} = ((ListExpress)argExps[{x}]).ExpressList.Select(x=>StepObjCreator.Instance.Get<{typeName}>(x,refMap)).ToList();");
+                }
+                else
+                {
+                    writer.WriteLine($"                this.{arugment.Item2} = StepObjCreator.Instance.Get<{arugment.Item1}>(argExps[{x}],refMap);");
+                }
+            }
+            writer.WriteLine("                break;");
+            writer.WriteLine("            }");
+            writer.WriteLine("            case ListExpress listExpress:");
+            writer.WriteLine("            {");
+            writer.WriteLine("                var complex = new List<IStepObj>();");
+            writer.WriteLine("                foreach (var item in listExpress.ExpressList)");
+            writer.WriteLine("                {");
+            writer.WriteLine("                    complex.Add(StepObjCreator.Instance.Create(((EntityExpress)item).EntityName));");
+            writer.WriteLine("                }");
+            writer.WriteLine("                this.complex = complex.ToArray();");
+            writer.WriteLine("                break;");
+            writer.WriteLine("            }");
+            writer.WriteLine("            default:");
+            writer.WriteLine("                throw new NotImplementedException();");
+            writer.WriteLine("        }");
+            writer.WriteLine("    }");
             writer.WriteLine("}");
 
         }
     }
 
+    const string STEPOBJCREATORGET = """
+        public T Get<T>(Express express, Dictionary<int, IStepObj> refMap)
+        {
+            switch (express)
+            {
+                case IntegerExpress integerExpress:
+                    return (T)(object)integerExpress.Value;
+                case RealExpress realExpress:
+                    return (T)(object)realExpress.Value;
+                case StringExpress stringExpress:
+                    return (T)(object)stringExpress.Value;
+                case EnumExpress enumExpress:
+                    return (T)(object)ToEnum(enumExpress.Value);
+                case EntityExpress entityExpress:
+                    var r = Create(entityExpress.EntityName);
+                    r.Init(entityExpress, refMap);
+                    return (T)r;
+                case RefExpress refExpress:
+                    return (T)refMap[refExpress.RefLineNumber];
+                case DollarExpress:
+                case AsteriskExpress:
+                    return default;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+        public IStepObj[] CreateStepObjs(List<LineExpress> lineExpresses)
+        {
+            var refMap = new Dictionary<int, IStepObj>();
+            var stepObjs = new IStepObj[lineExpresses.Count];
+            var indexMap = new Dictionary<LineExpress, int>();
+            for (int i = 0; i < lineExpresses.Count; i++)
+            {
+                var lineExpress = lineExpresses[i];
+                switch (lineExpress.body)
+                {
+                    case EntityExpress entityExpress:
+                        var r = Create(entityExpress.EntityName);
+                        stepObjs[i] = r;
+                        refMap.Add(lineExpress.LineNumber, r);
+                        break;
+                    case ListExpress listExpress:
+                        var complex = new StepComplex() { line_id = lineExpress.LineNumber, complex = null };
+                        refMap.Add(lineExpress.LineNumber, complex);
+                        stepObjs[i] = complex;
+                        break;
+                    default:
+                        throw new NotImplementedException();
+                }
+                indexMap.Add(lineExpress, i);
+            }
+            foreach (var (lineExp, index) in indexMap)
+            {
+                var stepObj = stepObjs[index];
+                if (stepObj is StepComplex complex)
+                {
+                    var list = new List<IStepObj>();
+                    foreach (EntityExpress item in ((ListExpress)lineExp.body).ExpressList)
+                    {
+                        var obj = Create(item.EntityName);
+                        obj.Init(item, refMap);
+                    }
+                }
+            }
+            foreach (var (lineExp, index) in indexMap)
+            {
+                var stepObj = stepObjs[index];
+                if (stepObj is not StepComplex)
+                {
+                    stepObj.Init(lineExp.body, refMap);
+                }
+            }
+
+            return stepObjs;
+        }
+    """;
+
     void PrintStaticInflect()
     {
-        var fileName = Path.Combine(outputDir, "StepObjCreater.cs");
+        var fileName = Path.Combine(outputDir, "StepObjCreator.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
-        writer.WriteLine("public class StepObjCreater:IStepObjCreater");
+        writer.WriteLine("using System.Collections.Frozen;");
+        // writer.WriteLine("using StepCodeDotNet.Base;");
+        writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
+        writer.WriteLine("    private static readonly FrozenDictionary<string,FrozenSet<string>> initArgTypes;");
+        writer.WriteLine("    private static readonly StepObjCreator instance = new();");
+        writer.WriteLine("    static StepObjCreator()");
+        writer.WriteLine("    {");
+        writer.WriteLine("        var dict=new Dictionary<string,FrozenSet<string>>();");
+        foreach (var (key, value) in entityArgTypesMap)
+        {
+            writer.WriteLine("        {");
+            writer.Write($"            string[] value=[");
+            foreach (var argType in value)
+            {
+                writer.Write($"\"{argType}\",");
+            }
+            writer.WriteLine("];");
+            writer.WriteLine($"            dict.Add(\"{key}\",FrozenSet.Create<string>(value));");
+            writer.WriteLine("        }");
+        }
+        writer.WriteLine("        initArgTypes= dict.ToFrozenDictionary();");
+        writer.WriteLine("    }");
+
         writer.WriteLine("    public IStepObj Create(string entityName) => entityName.ToLower() switch");
         writer.WriteLine("    {");
         foreach (Scope_* entity in entities)
@@ -540,6 +795,27 @@ unsafe class ExpResolver
         writer.WriteLine("        _ => throw new NotImplementedException()");
         writer.WriteLine("    };");
         writer.WriteLine("    public T Create<T>(string entityName) where T : IStepObj => (T)Create(entityName);");
+        writer.WriteLine("    public int ToEnum(string value)=> value.ToLower() switch");
+        writer.WriteLine("    {");
+        foreach (var (key, value) in enumValueMap)
+        {
+            writer.WriteLine($"        \"{key}\" => (int){value},");
+        }
+        writer.WriteLine("        _ => throw new NotImplementedException()");
+        writer.WriteLine("    };");
+        writer.WriteLine("    public bool IsBuiltInType(string typeName) => typeName.ToLower() switch");
+        writer.WriteLine("    {");
+        foreach (var typeName in builtInTypes)
+        {
+            writer.WriteLine($"        \"{typeName.ToLower()}\" => true,");
+        }
+        writer.WriteLine("        _ => false");
+        writer.WriteLine("    };");
+        writer.WriteLine("    public FrozenSet<string> GetInitArgTypes(string entityName)=>initArgTypes[entityName];");
+
+        writer.WriteLine("    public static StepObjCreator Instance=>instance ;");
+
+        writer.WriteLine(STEPOBJCREATORGET);
         writer.WriteLine("}");
     }
 
@@ -578,4 +854,6 @@ unsafe class ExpResolver
         }
     }
 
+    [GeneratedRegex(@"List<(.+)>")]
+    private static partial Regex ListRegex();
 }
