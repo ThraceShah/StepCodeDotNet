@@ -30,47 +30,51 @@ unsafe partial class ExpResolver
     </Project>
     """;
 
+    // const string LISTENTITYINIT = """
+    //                     if (listExpress.ExpressList.Count == 1)
+    //                     {
+    //                         $1 = new List<$2>();
+    //                         switch (listExpress.ExpressList[0])
+    //                         {
+    //                             case RefExpress refExpress:
+    //                                 var refEntity = refMap[refExpress.RefLineNumber];
+    //                                 if (refEntity is StepComplex stepComplex)
+    //                                 {
+    //                                     foreach (var item in stepComplex.complex)
+    //                                     {
+    //                                         if (item is $2 ___value)
+    //                                         {
+    //                                             $1.Add(___value);
+    //                                         }
+    //                                     }
+    //                                 }
+    //                                 else if (refEntity is $2 ___value2)
+    //                                 {
+    //                                     $1.Add(___value2);
+    //                                 }
+    //                                 else
+    //                                 {
+    //                                     throw new NotSupportedException();
+    //                                 }
+    //                                 break;
+    //                             case ListExpress listExpress2:
+    //                                 $1 = listExpress2.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+    //                                 break;
+    //                             case EntityExpress entityExpress2:
+    //                                 $1 = new List<$2> { StepObjCreator.Instance.Get<$2>(entityExpress2, refMap) };
+    //                                 break;
+    //                             default:
+    //                                 throw new NotSupportedException();
+    //                         }
+    //                     }
+    //                     else
+    //                     {
+    //                         $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+    //                     }
+    // """;
+
     const string LISTENTITYINIT = """
-                        if (listExpress.ExpressList.Count == 1)
-                        {
-                            $1 = new List<$2>();
-                            switch (listExpress.ExpressList[0])
-                            {
-                                case RefExpress refExpress:
-                                    var refEntity = refMap[refExpress.RefLineNumber];
-                                    if (refEntity is StepComplex stepComplex)
-                                    {
-                                        foreach (var item in stepComplex.complex)
-                                        {
-                                            if (item is $2 ___value)
-                                            {
-                                                $1.Add(___value);
-                                            }
-                                        }
-                                    }
-                                    else if (refEntity is $2 ___value2)
-                                    {
-                                        $1.Add(___value2);
-                                    }
-                                    else
-                                    {
-                                        throw new NotSupportedException();
-                                    }
-                                    break;
-                                case ListExpress listExpress2:
-                                    $1 = listExpress2.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
-                                    break;
-                                case EntityExpress entityExpress2:
-                                    $1 = new List<$2> { StepObjCreator.Instance.Get<$2>(entityExpress2, refMap) };
-                                    break;
-                                default:
-                                    throw new NotSupportedException();
-                            }
-                        }
-                        else
-                        {
-                            $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
-                        }
+                        $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
     """;
 
     const string STEPOBJCREATORGET = """
@@ -117,13 +121,14 @@ unsafe partial class ExpResolver
                 {
                     case EntityExpress entityExpress:
                         var r = Create(entityExpress.EntityName);
+                        r.line_id = lineExpress.LineNumber;
                         stepObjs[i] = r;
                         refMap.Add(lineExpress.LineNumber, r);
                         break;
-                    case ListExpress listExpress:
-                        var complex = new StepComplexImp() { line_id = lineExpress.LineNumber, complex = listExpress.ExpressList.ToArray() };
-                        refMap.Add(lineExpress.LineNumber, complex);
+                    case ListExpress:
+                        var complex = new StepComplexImp() { line_id = lineExpress.LineNumber};
                         stepObjs[i] = complex;
+                        refMap.Add(lineExpress.LineNumber, complex);
                         break;
                     default:
                         throw new NotImplementedException();
@@ -133,12 +138,8 @@ unsafe partial class ExpResolver
             foreach (var (lineExp, index) in indexMap)
             {
                 var stepObj = stepObjs[index];
-                if (stepObj is not StepComplex)
-                {
-                    stepObj.Init(lineExp.Body, refMap);
-                }
+                stepObj.Init(lineExp.Body, refMap);
             }
-
             return stepObjs;
         }
     """;
@@ -386,7 +387,6 @@ unsafe partial class ExpResolver
     {
         foreach (var (key, value) in typeMap)
         {
-            //writer.WriteLine($"global using {key}={value};");
             using var entityWriter = new StreamWriter(Path.Combine(entityImpOutputDir, $"{key}.cs"));
             entityWriter.WriteLine($"namespace {NameSpace};");
             HashSet<string> superNames = [];
@@ -699,7 +699,14 @@ unsafe partial class ExpResolver
         }
         writer.WriteLine("    public override void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
         writer.WriteLine("    {");
-        writer.WriteLine("        throw new NotImplementedException();");
+        writer.WriteLine("        switch (expression)");
+        writer.WriteLine("        {");
+        writer.WriteLine("            case ListExpress listExpress:");
+        writer.WriteLine("                this.complex = [..listExpress.ExpressList];");
+        writer.WriteLine("                break;");
+        writer.WriteLine("            default:");
+        writer.WriteLine("                throw new NotImplementedException();");
+        writer.WriteLine("        }");
         writer.WriteLine("    }");
         writer.WriteLine("}");
     }
@@ -752,50 +759,12 @@ unsafe partial class ExpResolver
                 }
             }
             entityArgTypesMap[entityName] = argsTypes;
-            writer.WriteLine("    public IExpress[] complex { get; set; }");
-            string initArugmentsString = string.Join(", ", initArugments.Select(x => $"{x.Item1} {x.Item2} = default"));
-            writer.WriteLine($"    public void Init({initArugmentsString})");
-            writer.WriteLine("    {");
-            foreach (var arugment in initArugments)
-            {
-                writer.WriteLine($"        this.{arugment.Item2} = {arugment.Item2};");
-            }
-            writer.WriteLine("    }");
-            string initArugmentsString2 = string.Join(", ", initArugments2.Select(x => $"{x.Item1} {x.Item2} = default"));
-            if (initArugmentsString2 != initArugmentsString)
-            {
-                writer.WriteLine($"    public void Init({initArugmentsString2})");
-                writer.WriteLine("    {");
-                foreach (var arugment in initArugments)
-                {
-                    if (enumNames.Contains(arugment.Item1))
-                    {
-                        writer.WriteLine($"        this.{arugment.Item2} = ({arugment.Item1}){arugment.Item2};");
-                    }
-                    else
-                    {
-                        writer.WriteLine($"        this.{arugment.Item2} = {arugment.Item2};");
-                    }
-                }
-                writer.WriteLine("    }");
-            }
-
-            writer.WriteLine($"    public static implicit operator {entityName}_imp(StepComplex complex)");
-            writer.WriteLine("    {");
-            writer.WriteLine($"        return new {entityName}_imp() {{ line_id = complex.line_id, complex = complex.complex }};");
-            writer.WriteLine("    }");
-            writer.WriteLine($"    public static implicit operator StepComplex({entityName}_imp obj)");
-            writer.WriteLine("    {");
-            writer.WriteLine($"        return new StepComplexImp() {{ line_id = obj.line_id, complex = obj.complex }};");
-            writer.WriteLine("    }");
-
 
             writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
             writer.WriteLine("    {");
             writer.WriteLine("        switch (expression)");
             writer.WriteLine("        {");
             writer.WriteLine("            case EntityExpress entityExpress:");
-            writer.WriteLine("            {");
             writer.WriteLine("                var argExps = entityExpress.Args;");
             for (int i = 1; i < initArugments.Count; i++)
             {
@@ -828,12 +797,9 @@ unsafe partial class ExpResolver
                 }
             }
             writer.WriteLine("                break;");
-            writer.WriteLine("            }");
-            writer.WriteLine("            case ListExpress listExpress:");
-            writer.WriteLine("            {");
-            writer.WriteLine("                this.complex=listExpress.ExpressList.ToArray();");
-            writer.WriteLine("                break;");
-            writer.WriteLine("            }");
+            // writer.WriteLine("            case ListExpress listExpress:");
+            // writer.WriteLine("                this.complex=[..listExpress.ExpressList];");
+            // writer.WriteLine("                break;");
             writer.WriteLine("            default:");
             writer.WriteLine("                throw new NotImplementedException();");
             writer.WriteLine("        }");

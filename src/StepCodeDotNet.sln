@@ -9,8 +9,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Interop", "S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Base", "StepCodeDotNet.Base\StepCodeDotNet.Base.csproj", "{C4FA01CC-8CD1-4F1C-94E8-2049B8B28C8E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Editor", "StepCodeDotNet.Editor\StepCodeDotNet.Editor.csproj", "{42FD054C-396F-4CAF-B02E-5E6A715B72D3}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Editor.Test", "StepCodeDotNet.Editor.Test\StepCodeDotNet.Editor.Test.csproj", "{C8948992-40A0-4AB0-B735-735F46743D53}"
 EndProject
 Global
@@ -59,18 +57,6 @@ Global
 		{C4FA01CC-8CD1-4F1C-94E8-2049B8B28C8E}.Release|x64.Build.0 = Release|Any CPU
 		{C4FA01CC-8CD1-4F1C-94E8-2049B8B28C8E}.Release|x86.ActiveCfg = Release|Any CPU
 		{C4FA01CC-8CD1-4F1C-94E8-2049B8B28C8E}.Release|x86.Build.0 = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|x64.Build.0 = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Debug|x86.Build.0 = Debug|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|x64.ActiveCfg = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|x64.Build.0 = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|x86.ActiveCfg = Release|Any CPU
-		{42FD054C-396F-4CAF-B02E-5E6A715B72D3}.Release|x86.Build.0 = Release|Any CPU
 		{C8948992-40A0-4AB0-B735-735F46743D53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C8948992-40A0-4AB0-B735-735F46743D53}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C8948992-40A0-4AB0-B735-735F46743D53}.Debug|x64.ActiveCfg = Debug|Any CPU
