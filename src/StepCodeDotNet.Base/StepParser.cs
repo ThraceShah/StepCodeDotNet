@@ -37,13 +37,22 @@ public partial class StepParser(IStepObjCreator creater)
 
     public IStepObj[] Resolve(string stepPath)
     {
-        var tokens = Tokenize(stepPath);
+        var tokenLists = Tokenize(stepPath);
+#if DEBUG
+        PrintTokens(tokenLists);
+#endif
         var expressList = new List<LineExpress>();
-        for (int i = 0; i < tokens.Count; i++)
+        var lineTokens = new List<IStepToken>();
+        foreach (var tokens in tokenLists)
         {
-            var lineTokens = tokens[i].ToArray();
+            lineTokens.AddRange(tokens);
+            if (lineTokens[^1] is not SemicolonToken)
+            {
+                continue;
+            }
             var lineExpress = ResolveLine(lineTokens.ToArray());
             expressList.Add(lineExpress);
+            lineTokens.Clear();
         }
         return creater.CreateStepObjs(expressList);
     }
@@ -331,11 +340,11 @@ public partial class StepParser(IStepObjCreator creater)
         var str = number.Value;
         if (str.Contains('.'))
         {
-            return (new RealToken(double.Parse(str)), number.Length);
+            return (new RealToken(double.Parse(str)), str.Length - 1);
         }
         else
         {
-            return (new IntegerToken(int.Parse(str)), number.Length);
+            return (new IntegerToken(int.Parse(str)), str.Length - 1);
         }
     }
 
@@ -408,7 +417,7 @@ public partial class StepParser(IStepObjCreator creater)
                         break;
                     }
                 default:
-                    if (char.IsDigit(c))
+                    if (char.IsDigit(c) || c == '+' || c == '-')
                     {
                         var (token, endIndex) = GetNumberToken(line[i..]);
                         tokens.Add(token);
