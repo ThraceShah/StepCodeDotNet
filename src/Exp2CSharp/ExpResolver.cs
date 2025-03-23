@@ -74,7 +74,7 @@ unsafe partial class ExpResolver
     // """;
 
     const string LISTENTITYINIT = """
-                        $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
+                            $1 = listExpress.ExpressList.Select(x => StepObjCreator.Instance.Get<$2>(x, refMap)).ToList();
     """;
 
     const string STEPOBJCREATORGET = """
@@ -360,6 +360,7 @@ unsafe partial class ExpResolver
         var baseDir = AppContext.BaseDirectory;
         var baseDll = Path.Combine(baseDir, "StepCodeDotNet.Base.dll");
         var destDll = Path.Combine(outputDir, "StepCodeDotNet.Base.dll");
+        Console.WriteLine($"Copy {baseDll} to {destDll}");
         File.Copy(baseDll, destDll, true);
     }
 
@@ -779,16 +780,19 @@ unsafe partial class ExpResolver
                     var match = listRegex.Match(arugment.Item1);
                     var typeName = match.Groups[1].Value;
                     writer.WriteLine("                {");
-                    writer.WriteLine($"                    var listExpress = (ListExpress)argExps[{x}];");
-                    if (builtInTypes.Contains(typeName))
-                    {
-                        writer.WriteLine($"                this.{arugment.Item2} = ((ListExpress)argExps[{x}]).ExpressList.Select(x=>StepObjCreator.Instance.Get<{typeName}>(x,refMap)).ToList();");
-                    }
-                    else
+                    writer.WriteLine($"                    if(argExps[{x}] is ListExpress listExpress)");
+                    writer.WriteLine("                    {");
+                    // writer.WriteLine($"                        var listExpress = (ListExpress)argExps[{x}];");
+                    // if (builtInTypes.Contains(typeName))
+                    // {
+                    //     writer.WriteLine($"                    this.{arugment.Item2} = listExpress.ExpressList.Select(x=>StepObjCreator.Instance.Get<{typeName}>(x,refMap)).ToList();");
+                    // }
+                    // else
                     {
                         writer.WriteLine(LISTENTITYINIT.Replace("$1", $"this.{arugment.Item2}").Replace("$2", typeName));
 
                     }
+                    writer.WriteLine("                    }");
                     writer.WriteLine("                }");
                 }
                 else
@@ -818,53 +822,53 @@ unsafe partial class ExpResolver
         writer.WriteLine("using System.Collections.Frozen;");
         writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
-        writer.WriteLine("    private static readonly FrozenDictionary<string,FrozenSet<string>> initArgTypes;");
+        // writer.WriteLine("    private static readonly FrozenDictionary<string,FrozenSet<string>> initArgTypes;");
         writer.WriteLine("    private static readonly StepObjCreator instance = new();");
-        writer.WriteLine("    static StepObjCreator()");
-        writer.WriteLine("    {");
-        writer.WriteLine("        var dict=new Dictionary<string,FrozenSet<string>>();");
-        foreach (var (key, value) in entityArgTypesMap)
-        {
-            writer.WriteLine("        {");
-            writer.Write($"            string[] value=[");
-            foreach (var argType in value)
-            {
-                writer.Write($"\"{argType}\",");
-            }
-            writer.WriteLine("];");
-            writer.WriteLine($"            dict.Add(\"{key}\",FrozenSet.Create<string>(value));");
-            writer.WriteLine("        }");
-        }
-        writer.WriteLine("        initArgTypes= dict.ToFrozenDictionary();");
-        writer.WriteLine("    }");
+        // writer.WriteLine("    static StepObjCreator()");
+        // writer.WriteLine("    {");
+        // writer.WriteLine("        var dict=new Dictionary<string,FrozenSet<string>>();");
+        // foreach (var (key, value) in entityArgTypesMap)
+        // {
+        //     writer.WriteLine("        {");
+        //     writer.Write($"            string[] value=[");
+        //     foreach (var argType in value)
+        //     {
+        //         writer.Write($"\"{argType}\",");
+        //     }
+        //     writer.WriteLine("];");
+        //     writer.WriteLine($"            dict.Add(\"{key}\",FrozenSet.Create<string>(value));");
+        //     writer.WriteLine("        }");
+        // }
+        // writer.WriteLine("        initArgTypes= dict.ToFrozenDictionary();");
+        // writer.WriteLine("    }");
 
-        writer.WriteLine("    public IStepObj Create(string entityName) => entityName.ToLower() switch");
+        writer.WriteLine("    public IStepObj Create(string entityName) => entityName switch");
         writer.WriteLine("    {");
         foreach (Scope_* entity in entities)
         {
             var entityName = entity->symbol.Name;
-            writer.WriteLine($"        \"{entityName}\" => new {entityName}_imp(),");
+            writer.WriteLine($"        \"{entityName.ToUpper()}\" => new {entityName}_imp(),");
         }
         writer.WriteLine("        _ => throw new NotImplementedException()");
         writer.WriteLine("    };");
         writer.WriteLine("    public T Create<T>(string entityName) where T : IStepObj => (T)Create(entityName);");
-        writer.WriteLine("    public int ToEnum(string value)=> value.ToLower() switch");
+        writer.WriteLine("    public int ToEnum(string value)=> value switch");
         writer.WriteLine("    {");
         foreach (var (key, value) in enumValueMap)
         {
-            writer.WriteLine($"        \"{key}\" => (int){value},");
+            writer.WriteLine($"        \"{key.ToUpper()}\" => (int){value},");
         }
         writer.WriteLine("        _ => throw new NotImplementedException()");
         writer.WriteLine("    };");
-        writer.WriteLine("    public bool IsBuiltInType(string typeName) => typeName.ToLower() switch");
+        writer.WriteLine("    public bool IsBuiltInType(string typeName) => typeName switch");
         writer.WriteLine("    {");
         foreach (var typeName in builtInTypes)
         {
-            writer.WriteLine($"        \"{typeName.ToLower()}\" => true,");
+            writer.WriteLine($"        \"{typeName.ToUpper()}\" => true,");
         }
         writer.WriteLine("        _ => false");
         writer.WriteLine("    };");
-        writer.WriteLine("    public FrozenSet<string> GetInitArgTypes(string entityName)=>initArgTypes[entityName];");
+        // writer.WriteLine("    public FrozenSet<string> GetInitArgTypes(string entityName)=>initArgTypes[entityName];");
 
         writer.WriteLine("    public static StepObjCreator Instance=>instance ;");
 
