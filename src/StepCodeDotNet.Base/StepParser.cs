@@ -270,14 +270,29 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private void SkipHeader(StreamReader reader)
+    private void SkipHeader(BinaryReader reader)
     {
-        string line;
-        while ((line = reader.ReadLine()) != null)
+        StringBuilder sb = new();
+        Span<char> buffer = stackalloc char[1];
+        while (reader.Read(buffer) > 0)
         {
-            if (line.StartsWith("DATA;"))
+            if (buffer[0] == '\r')
             {
-                break;
+                continue;
+            }
+            if (buffer[0] == '\n')
+            {
+                continue;
+            }
+            sb.Append(buffer[0]);
+            if (buffer[0] == ';')
+            {
+                var line = sb.ToString();
+                sb.Clear();
+                if (line.StartsWith("DATA;"))
+                {
+                    break;
+                }
             }
         }
     }
@@ -437,22 +452,47 @@ public partial class StepParser(IStepObjCreator creater)
 
     private List<List<IStepToken>> Tokenize(string stepFile)
     {
-        using var reader = new StreamReader(stepFile);
-        var tokens = new List<List<IStepToken>>();
+        using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
+        using var reader = new BinaryReader(fileStream, Encoding.UTF8);
         SkipHeader(reader);
-        string line;
-        while ((line = reader.ReadLine()) != null)
+        var tokens = new List<List<IStepToken>>();
+        StringBuilder sb = new();
+        Span<char> buffer = stackalloc char[1];
+        while (reader.Read(buffer) > 0)
         {
-            if (line.StartsWith("ENDSEC;"))
+            if (buffer[0] == '\r')
             {
-                break;
+                continue;
             }
-            var lineTokens = TokenizeLine(line);
-            tokens.Add(lineTokens);
+            if (buffer[0] == '\n')
+            {
+                continue;
+            }
+            sb.Append(buffer[0]);
+            if (buffer[0] == ';')
+            {
+                var line = sb.ToString();
+                sb.Clear();
+                if (line.StartsWith("ENDSEC;"))
+                {
+                    break;
+                }
+                var lineTokens = TokenizeLine(line);
+                tokens.Add(lineTokens);
+            }
         }
+        // while ((line = reader.ReadLine()) != null)
+        // {
+        //     if (line.StartsWith("ENDSEC;"))
+        //     {
+        //         break;
+        //     }
+        //     var lineTokens = TokenizeLine(line);
+        //     tokens.Add(lineTokens);
+        // }
         return tokens;
     }
 
-    [GeneratedRegex(@"^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?")]
+    [GeneratedRegex(@"^[-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
     private static partial Regex NumberRegex();
 }

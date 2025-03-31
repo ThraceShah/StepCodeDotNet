@@ -121,6 +121,10 @@ unsafe partial class ExpResolver
                 {
                     case EntityExpress entityExpress:
                         var r = Create(entityExpress.EntityName);
+                        if(r is null)
+                        {
+                            continue;
+                        }
                         r.line_id = lineExpress.LineNumber;
                         stepObjs[i] = r;
                         refMap.Add(lineExpress.LineNumber, r);
@@ -849,7 +853,7 @@ unsafe partial class ExpResolver
             var entityName = entity->symbol.Name;
             writer.WriteLine($"        \"{entityName.ToUpper()}\" => new {entityName}_imp(),");
         }
-        writer.WriteLine("        _ => throw new NotImplementedException()");
+        writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
         writer.WriteLine("    public T Create<T>(string entityName) where T : IStepObj => (T)Create(entityName);");
         writer.WriteLine("    public int ToEnum(string value)=> value switch");
