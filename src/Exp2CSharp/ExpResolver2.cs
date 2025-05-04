@@ -158,15 +158,9 @@ unsafe class ExpResolver2
     }
 
     readonly string outputDir;
-    readonly string enumOutputDir;
-    readonly string typeOutputDir;
-    readonly string entityOutputDir;
-    readonly string entityImpOutputDir;
-    readonly string aggregateOutputDir;
     readonly string globalOutputFile;
     string schemaName;
     readonly string schemaPath;
-    readonly Dictionary<string, List<string>> entitySelectsMap = [];
     readonly Dictionary<string, string> typeMap = new()
     {
         ["REAL"] = "System.Double",
@@ -175,16 +169,6 @@ unsafe class ExpResolver2
         ["BOOLEAN"] = "System.Boolean",
         ["NUMBER"] = "System.Double",
     };
-    readonly HashSet<nint> aggregates = [];
-    readonly HashSet<nint> selects = [];
-    readonly List<nint> entities = [];
-    readonly Dictionary<string, string> entityInterfaceMap = [];
-    readonly HashSet<string> enumNames = [];
-    readonly Dictionary<string, string> enumValueMap = [];
-    readonly HashSet<string> builtInTypes = ["REAL", "INTEGER", "STRING", "BOOLEAN", "NUMBER"];
-    readonly Dictionary<string, List<string>> entityArgTypesMap = [];
-    readonly HashSet<string> complexProperties = [];
-    readonly Dictionary<string, List<string>> globalUsingTypesMap = [];
 
     string NameSpace => $"StepCodeDotNet.Gen.{schemaName}";
 
@@ -196,31 +180,6 @@ unsafe class ExpResolver2
         if (!Directory.Exists(outputDir))
         {
             Directory.CreateDirectory(outputDir);
-        }
-        enumOutputDir = Path.Combine(outputDir, "Enums");
-        if (!Directory.Exists(enumOutputDir))
-        {
-            Directory.CreateDirectory(enumOutputDir);
-        }
-        typeOutputDir = Path.Combine(outputDir, "Types");
-        if (!Directory.Exists(typeOutputDir))
-        {
-            Directory.CreateDirectory(typeOutputDir);
-        }
-        entityOutputDir = Path.Combine(outputDir, "Entities");
-        if (!Directory.Exists(entityOutputDir))
-        {
-            Directory.CreateDirectory(entityOutputDir);
-        }
-        entityImpOutputDir = Path.Combine(outputDir, "EntitiesImp");
-        if (!Directory.Exists(entityImpOutputDir))
-        {
-            Directory.CreateDirectory(entityImpOutputDir);
-        }
-        aggregateOutputDir = Path.Combine(outputDir, "Aggregates");
-        if (!Directory.Exists(aggregateOutputDir))
-        {
-            Directory.CreateDirectory(aggregateOutputDir);
         }
         globalOutputFile = Path.Combine(outputDir, "GlobalUsing.cs");
         if (File.Exists(globalOutputFile))
@@ -300,8 +259,9 @@ unsafe class ExpResolver2
 
     static string EntityNameToInterfaceName(string entityName)
     {
-        var name = char.ToUpper(entityName[0]) + entityName[1..];
-        return $"I{name}";
+        // var name = char.ToUpper(entityName[0]) + entityName[1..];
+        // return $"I{name}";
+        return entityName;
     }
 
 
@@ -453,7 +413,7 @@ unsafe class ExpResolver2
 
     private void PrintEnums(Dictionary<nint, StepEnum> enumsDict)
     {
-        var fileName = Path.Combine(enumOutputDir, $"Enums.cs");
+        var fileName = Path.Combine(outputDir, $"Enums.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
 
@@ -471,7 +431,7 @@ unsafe class ExpResolver2
 
     private void PrintSelects(Dictionary<nint, StepSelect> selectsDict)
     {
-        var fileName = Path.Combine(typeOutputDir, $"Selects.cs");
+        var fileName = Path.Combine(outputDir, $"Selects.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
         foreach (var (_, obj) in selectsDict)
@@ -489,7 +449,7 @@ unsafe class ExpResolver2
     {
         foreach (var (_, obj) in aggregatesDict)
         {
-            var fileName = Path.Combine(aggregateOutputDir, $"{obj.Name}.cs");
+            var fileName = Path.Combine(outputDir, $"{obj.Name}.cs");
             using var writer = new StreamWriter(fileName);
             writer.WriteLine($"namespace {NameSpace};");
             writer.Write($"public class {obj.Name} : List<{obj.ValueType!.Name}>");
@@ -533,7 +493,7 @@ unsafe class ExpResolver2
 
     private void PrintIEntities(Dictionary<nint, StepEntity> entitiesDict)
     {
-        var fileName = Path.Combine(entityOutputDir, $"IEntities.cs");
+        var fileName = Path.Combine(outputDir, $"IEntities.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
         foreach (var (_, obj) in entitiesDict)
@@ -594,14 +554,14 @@ unsafe class ExpResolver2
 
     private void PrintIEntityImp(Dictionary<nint, StepEntity> entitiesDict)
     {
-        var fileName = Path.Combine(entityImpOutputDir, $"EntityImpls.cs");
+        var fileName = Path.Combine(outputDir, $"EntityImpls.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
         foreach (var (_, obj) in entitiesDict)
         {
             var entityName = obj.Name;
             var interfaceName = EntityNameToInterfaceName(entityName);
-            writer.WriteLine($"public class {entityName} : {interfaceName}");
+            writer.WriteLine($"public class {entityName}_imp : {interfaceName}");
             writer.WriteLine("{");
             writer.WriteLine($"    public int line_id {{ get; set; }}");
             var allAttrs = GetEntityAllAttrs(obj);
@@ -650,7 +610,7 @@ unsafe class ExpResolver2
 
     private void PrintBaseDef(Dictionary<string, StepBaseDefine> baseDict)
     {
-        var fileName = Path.Combine(entityOutputDir, $"BaseDef.cs");
+        var fileName = Path.Combine(outputDir, $"BaseDef.cs");
         using var globalWriter = new StreamWriter(globalOutputFile, true);
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
@@ -780,7 +740,7 @@ unsafe class ExpResolver2
         writer.WriteLine("    {");
         foreach (var entity in entitiesDict.Values)
         {
-            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}(),");
+            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}_imp(),");
         }
         foreach (var baseDef in baseDict.Values)
         {
@@ -797,7 +757,7 @@ unsafe class ExpResolver2
         writer.WriteLine("    {");
         foreach (var entity in entitiesDict.Values)
         {
-            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}(),");
+            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}_imp(),");
         }
         foreach (var baseDef in baseDict.Values)
         {
