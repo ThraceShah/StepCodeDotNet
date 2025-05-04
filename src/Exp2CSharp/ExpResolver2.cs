@@ -324,7 +324,7 @@ unsafe class ExpResolver2
             {"STRING", new StepBaseDefine() { Name = "STRING", Type = "STRING" } },
             {"BOOLEAN", new StepBaseDefine() { Name = "BOOLEAN", Type = "BOOLEAN" } },
             {"NUMBER", new StepBaseDefine() { Name = "NUMBER", Type = "NUMBER" } },
-            {"LOGICAL", new StepBaseDefine() { Name = "LOGICAL", Type = "LOGICAL" } }
+            {"LOGICAL", new StepEnum() { Name = "LOGICAL", Values = ["TRUE", "FALSE","UNKNOWN"] }}
         };
         var enumsDict = new Dictionary<nint, StepEnum>();
         var selectsDict = new Dictionary<nint, StepSelect>();
@@ -639,11 +639,11 @@ unsafe class ExpResolver2
     {
         return stepDefine switch
         {
-            StepBaseDefine baseType => $"StepObjCreator.Instance.Get{baseType.Type}(argExps[{i}])",
-            StepEnum enumType => $"StepObjCreator.Instance.GetEnum<{enumType.Name.ToUpper()}>(argExps[{i}])",
-            StepSelect selectType => $"StepObjCreator.Instance.GetEntity<{selectType.Name}>(argExps[{i}],refMap)",
-            StepAggregate aggregateType => $"StepObjCreator.Instance.GetAggregate<{GetStepTypeStrng(aggregateType.ValueType!)}>(argExps[{i}],refMap)",
-            StepEntity entityType => $"StepObjCreator.Instance.GetEntity<{GetStepTypeStrng(entityType)}>(argExps[{i}],refMap)",
+            StepBaseDefine baseType => $"StepObjCreator.Get{baseType.Type}(argExps[{i}])",
+            StepEnum enumType => $"StepObjCreator.GetEnum<{enumType.Name.ToUpper()}>(argExps[{i}])",
+            StepSelect selectType => $"StepObjCreator.GetEntity<{selectType.Name}>(argExps[{i}],refMap)",
+            StepAggregate aggregateType => $"StepObjCreator.GetAggregate<{GetStepTypeStrng(aggregateType.ValueType!)}>(argExps[{i}],refMap)",
+            StepEntity entityType => $"StepObjCreator.GetEntity<{GetStepTypeStrng(entityType)}>(argExps[{i}],refMap)",
             _ => throw new NotImplementedException($"Type {stepDefine.GetType()} not implemented"),
         };
     }
@@ -774,8 +774,9 @@ unsafe class ExpResolver2
         writer.WriteLine("using System.Runtime.CompilerServices;");
         writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
+        writer.WriteLine($"    private const int NAMESPACE_LENGTH = {NameSpace.Length};");
         writer.WriteLine("    private static readonly StepObjCreator instance = new();");
-        writer.WriteLine("    public IStepBaseObj Create(EntityExpress express) => express.EntityName switch");
+        writer.WriteLine("    private static IStepBaseObj Create(EntityExpress express) => express.EntityName switch");
         writer.WriteLine("    {");
         foreach (var entity in entitiesDict.Values)
         {
@@ -791,16 +792,23 @@ unsafe class ExpResolver2
         }
         writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
-        writer.WriteLine("    public T Create<T>(EntityExpress express) where T : IStepObj => (T)Create(express);");
-        writer.WriteLine("    public bool IsBuiltInType(string typeName) => typeName switch");
+
+        writer.WriteLine("    private static IStepBaseObj Create(string entityName, IExpress express) => entityName switch");
         writer.WriteLine("    {");
+        foreach (var entity in entitiesDict.Values)
+        {
+            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}(),");
+        }
         foreach (var baseDef in baseDict.Values)
         {
-            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => true,");
+            if (baseDef.Name == "LOGICAL")
+            {
+                continue;
+            }
+            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(((IExpress<{typeMap[baseDef.Type]}>)express).Value),");
         }
-        writer.WriteLine("        _ => false");
+        writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
-        // writer.WriteLine("    public FrozenSet<string> GetInitArgTypes(string entityName)=>initArgTypes[entityName];");
 
         writer.WriteLine("    public static StepObjCreator Instance=>instance ;");
 
@@ -811,19 +819,15 @@ unsafe class ExpResolver2
 
 
     const string STEPOBJCREATORGET = """
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T GetEnum<T>(IExpress express) where T : struct, Enum
+        public static T GetEnum<T>(IExpress express) where T : struct, Enum
         {
-            if (express is EnumExpress enumExpress)
-            {
-                return Enum.Parse<T>(enumExpress.Value);
-            }
-            return default;
+            var enumExpress = (EnumExpress)express;
+            return Enum.Parse<T>(enumExpress.Value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public double GetREAL(IExpress express)
+        public static double GetREAL(IExpress express)
         {
             if (express is RealExpress realExpress)
             {
@@ -837,52 +841,33 @@ unsafe class ExpResolver2
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetINTEGER(IExpress express)
+        public static int GetINTEGER(IExpress express)
         {
-            if (express is IntegerExpress integerExpress)
-            {
-                return integerExpress.Value;
-            }
-            return 0;
+            var integerExpress = (IntegerExpress)express;
+            return integerExpress.Value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public string GetSTRING(IExpress express)
+        public static string GetSTRING(IExpress express)
         {
-            if (express is StringExpress stringExpress)
-            {
-                return stringExpress.Value;
-            }
-            return string.Empty;
+            var stringExpress = (StringExpress)express;
+            return stringExpress.Value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool GetBOOLEAN(IExpress express)
+        public static bool GetBOOLEAN(IExpress express)
         {
-            if (express is BooleanExpress booleanExpress)
-            {
-                return booleanExpress.Value;
-            }
-            return false;
+            var booleanExpress = (BooleanExpress)express;
+            return booleanExpress.Value;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public LOGICAL GetLOGICAL(IExpress express)
-        {
-            if (express is BooleanExpress booleanExpress)
-            {
-                return booleanExpress.Value ? LOGICAL.TRUE : LOGICAL.FALSE;
-            }
-            return LOGICAL.UNKNOWN;
-        }
-
-
-        public T GetEntity<T>(IExpress express, Dictionary<int, IStepObj> refMap)
+        public static T GetEntity<T>(IExpress express, Dictionary<int, IStepObj> refMap)
         {
             if (express is EntityExpress entityExpress)
             {
                 var r = Create(entityExpress);
-                if(r is IStepObj stepObj)
+                if (r is IStepObj stepObj)
                 {
                     stepObj.Init(entityExpress, refMap);
                 }
@@ -894,155 +879,8 @@ unsafe class ExpResolver2
             }
             return default;
         }
-
-        private List<T> GetIntAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((IntegerExpress)item).Value;
-                result.Add((T)Activator.CreateInstance(typeof(T), r));
-            }
-            return result;
-        }
-
-        private object GetIntAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((IntegerExpress)item).Value;
-                ((IList)result).Add(Activator.CreateInstance(elementType, r));
-            }
-            return result;
-        }
-
-
-        private List<T> GetRealAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((RealExpress)item).Value;
-                result.Add((T)Activator.CreateInstance(typeof(T), r));
-            }
-            return result;
-        }
-
-        private object GetRealAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((RealExpress)item).Value;
-                ((IList)result).Add(Activator.CreateInstance(elementType, r));
-            }
-            return result;
-        }
-
-        private List<T> GetStringAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((StringExpress)item).Value;
-                result.Add((T)Activator.CreateInstance(typeof(T), r));
-            }
-            return result;
-        }
-
-        private object GetStringAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((StringExpress)item).Value;
-                ((IList)result).Add(Activator.CreateInstance(elementType, r));
-            }
-            return result;
-        }
-
-        private List<T> GetBooleanAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                result.Add((T)(object)((BooleanExpress)item).Value);
-            }
-            return result;
-        }
-
-        private object GetBooleanAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((BooleanExpress)item).Value;
-                ((IList)result).Add(Activator.CreateInstance(elementType, r));
-            }
-            return result;
-        }
-
-        private List<T> GetEnumAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((EnumExpress)item).Value;
-                result.Add((T)Enum.Parse(typeof(T), r));
-            }
-            return result;
-        }
-
-        private object GetEnumAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = ((EnumExpress)item).Value;
-                ((IList)result).Add(Enum.Parse(elementType, r));
-            }
-            return result;
-        }
-
-        private List<T> GetEntityAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            var listExpress = (ListExpress)express;
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                result.Add(GetEntity<T>(item, refMap));
-            }
-            return result;
-        }
-
-        private object GetEntityAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                var r = Create((EntityExpress)item);
-                if (r is IStepObj stepObj)
-                {
-                    stepObj.Init(item, refMap);
-                }
-                ((IList)result).Add(r);
-            }
-            return result;
-        }
-
-        private List<T> GetRefAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static List<T> GetRefAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
         {
             var listExpress = (ListExpress)express;
             var result = new List<T>(listExpress.ExpressList.Count);
@@ -1052,11 +890,11 @@ unsafe class ExpResolver2
             }
             return result;
         }
-
-        private object GetRefAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static object GetRefAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type listType)
         {
             var listExpress = (ListExpress)express;
-            var result = Activator.CreateInstance(elementType, listExpress.ExpressList.Count);
+            var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
             foreach (var item in listExpress.ExpressList)
             {
                 ((IList)result).Add(refMap[((RefExpress)item).RefLineNumber]);
@@ -1065,7 +903,7 @@ unsafe class ExpResolver2
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public object GetList(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
+        public static object GetList(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
         {
             var listType = typeof(List<>).MakeGenericType(elementType);
             if (express is ListExpress listExpress)
@@ -1075,33 +913,10 @@ unsafe class ExpResolver2
                     return Activator.CreateInstance(listType);
                 }
                 var firstElement = listExpress.ExpressList[0];
-                if (firstElement is IntegerExpress)
+
+                if (firstElement is RefExpress)
                 {
-                    return GetIntAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is RealExpress)
-                {
-                    return GetRealAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is StringExpress)
-                {
-                    return GetStringAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is BooleanExpress)
-                {
-                    return GetBooleanAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is EnumExpress)
-                {
-                    return GetEnumAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is EntityExpress)
-                {
-                    return GetEntityAggregateObjs(express, refMap, elementType);
-                }
-                else if (firstElement is RefExpress)
-                {
-                    return GetRefAggregateObjs(express, refMap, elementType);
+                    return GetRefAggregateObjs(express, refMap, listType);
                 }
                 else if (firstElement is ListExpress)
                 {
@@ -1113,10 +928,26 @@ unsafe class ExpResolver2
                         ((IList)result).Add(element);
                     }
                 }
+                else
+                {
+                    var typeName = elementType.Name.ToUpper();
+                    var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
+                    foreach (var item in listExpress.ExpressList)
+                    {
+                        var r = Create(typeName, item);
+                        if (r is IStepObj stepObj)
+                        {
+                            stepObj.Init(item, refMap);
+                        }
+                        ((IList)result).Add(r);
+                    }
+                    return result;
+                }
             }
             return default;
         }
-        public List<T> GetAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static List<T> GetAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
         {
             if (express is ListExpress listExpress)
             {
@@ -1125,31 +956,7 @@ unsafe class ExpResolver2
                     return [];
                 }
                 var firstElement = listExpress.ExpressList[0];
-                if (firstElement is IntegerExpress)
-                {
-                    return GetIntAggregate<T>(express, refMap);
-                }
-                else if (firstElement is RealExpress)
-                {
-                    return GetRealAggregate<T>(express, refMap);
-                }
-                else if (firstElement is StringExpress)
-                {
-                    return GetStringAggregate<T>(express, refMap);
-                }
-                else if (firstElement is BooleanExpress)
-                {
-                    return GetBooleanAggregate<T>(express, refMap);
-                }
-                else if (firstElement is EnumExpress)
-                {
-                    return GetEnumAggregate<T>(express, refMap);
-                }
-                else if (firstElement is EntityExpress)
-                {
-                    return GetEntityAggregate<T>(express, refMap);
-                }
-                else if (firstElement is RefExpress)
+                if (firstElement is RefExpress)
                 {
                     return GetRefAggregate<T>(express, refMap);
                 }
@@ -1163,6 +970,22 @@ unsafe class ExpResolver2
                         ((IList)result).Add(element);
                     }
                     return result;
+                }
+                else
+                {
+                    var typeName = typeof(T).Name.ToUpper();
+                    var result = new List<T>(listExpress.ExpressList.Count);
+                    foreach (var item in listExpress.ExpressList)
+                    {
+                        var r = Create(typeName, item);
+                        if (r is IStepObj stepObj)
+                        {
+                            stepObj.Init(item, refMap);
+                        }
+                        result.Add((T)r);
+                    }
+                    return result;
+
                 }
             }
             return default;
@@ -1208,7 +1031,6 @@ unsafe class ExpResolver2
             }
             return stepObjs;
         }
-
     """;
 }
 
