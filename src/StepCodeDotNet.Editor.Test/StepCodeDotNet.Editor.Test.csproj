@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\StepCodeDotNet.Base\StepCodeDotNet.Base.csproj" />
-    <ProjectReference Include="..\StepCodeDotNet.Gen\ap203\ap203.csproj" />
+    <ProjectReference Include="..\StepCodeDotNet.Gen/config_control_design/StepCodeDotNet.Gen.config_control_design.csproj" />
   </ItemGroup>
 
 </Project>

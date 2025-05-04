@@ -24,7 +24,7 @@ class Program
             return;
         }
         var outputPath = Path.Combine(Environment.CurrentDirectory, args[1]);
-        var expResolver = new ExpResolver(args[0], outputPath);
+        var expResolver = new ExpResolver2(args[0], outputPath);
         expResolver.Resolve();
     }
 }

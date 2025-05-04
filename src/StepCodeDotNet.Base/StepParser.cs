@@ -20,11 +20,15 @@ public record BooleanToken(bool Value) : IStepToken;
 public record DollarToken : IStepToken;
 
 public interface IExpress;
-public record StringExpress(string Value) : IExpress;
-public record IntegerExpress(int Value) : IExpress;
-public record RealExpress(double Value) : IExpress;
-public record BooleanExpress(bool Value) : IExpress;
-public record EnumExpress(string Value) : IExpress;
+public interface IExpress<T> : IExpress
+{
+    T Value { get; }
+}
+public record StringExpress(string Value) : IExpress<string>;
+public record IntegerExpress(int Value) : IExpress<int>;
+public record RealExpress(double Value) : IExpress<double>;
+public record BooleanExpress(bool Value) : IExpress<bool>;
+public record EnumExpress(string Value) : IExpress<string>;
 public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
 public record AsteriskExpress : IExpress;
 public record ListExpress(List<IExpress> ExpressList) : IExpress;
