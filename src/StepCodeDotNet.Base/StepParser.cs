@@ -32,6 +32,7 @@ public record EnumExpress(string Value) : IExpress<string>;
 public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
 public record AsteriskExpress : IExpress;
 public record ListExpress(List<IExpress> ExpressList) : IExpress;
+public record ComplexExpress(List<IExpress> ExpressList) : IExpress;
 public record RefExpress(int RefLineNumber) : IExpress;
 public record LineExpress(int LineNumber, IExpress Body) : IExpress;
 public record DollarExpress : IExpress;
@@ -115,6 +116,38 @@ public partial class StepParser(IStepObjCreator creater)
         }
         return (new ListExpress(result), 0);
     }
+
+    private ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
+    {
+        var result = new List<IExpress>();
+        for (int i = 0; i < listTokens.Length; i++)
+        {
+            switch (listTokens[i])
+            {
+                case EntityToken:
+                    {
+                        var (entityExpress, endIndex) = ResolveEntity(listTokens[i..]);
+                        result.Add(entityExpress);
+                        i += endIndex;
+                        break;
+                    }
+                case LeftBracketToken:
+                    {
+                        var startIndex = i + 1;
+                        var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
+                        result.AddRange(listExpress.ExpressList);
+                        i += endIndex + 1;
+                        break;
+                    }
+                case RightBracketToken:
+                    return new ComplexExpress(result);
+                default:
+                    break;
+            }
+        }
+        return new ComplexExpress(result);
+    }
+
 
     private (EntityExpress, int) ResolveEntity(ReadOnlySpan<IStepToken> entityTokens)
     {
@@ -205,8 +238,8 @@ public partial class StepParser(IStepObjCreator creater)
                 var (entityExpress, _) = ResolveEntity(lineTokens[2..]);
                 return new LineExpress(lineNumberValue, entityExpress);
             case LeftBracketToken:
-                var (listExpress, _) = ResolveList(lineTokens[3..]);
-                return new LineExpress(lineNumberValue, listExpress);
+                var complexExpress = ResolveComplex(lineTokens[3..]);
+                return new LineExpress(lineNumberValue, complexExpress);
             default:
                 throw new Exception("Invalid entity");
         }

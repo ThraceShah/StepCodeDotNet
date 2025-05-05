@@ -778,8 +778,8 @@ unsafe class ExpResolver2
         writer.WriteLine("    {");
         writer.WriteLine("        switch (expression)");
         writer.WriteLine("        {");
-        writer.WriteLine("            case ListExpress listExpress:");
-        writer.WriteLine("                this.complex = [..listExpress.ExpressList];");
+        writer.WriteLine("            case ComplexExpress complexExpress:");
+        writer.WriteLine("                this.complex = [..complexExpress.ExpressList];");
         writer.WriteLine("                break;");
         writer.WriteLine("            default:");
         writer.WriteLine("                throw new NotImplementedException();");
@@ -1041,7 +1041,7 @@ unsafe class ExpResolver2
                             continue;
                         }
                         break;
-                    case ListExpress:
+                    case ComplexExpress complexExpress:
                         var complex = new StepComplexImp() { line_id = lineExpress.LineNumber };
                         stepObjs[i] = complex;
                         refMap.Add(lineExpress.LineNumber, complex);
