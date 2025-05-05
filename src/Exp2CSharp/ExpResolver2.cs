@@ -515,7 +515,7 @@ unsafe class ExpResolver2
         }
     }
 
-    public static List<StepAttribute> GetEntityAllAttrs(StepEntity stepEntity)
+    private static List<StepAttribute> GetEntityAllAttrs(StepEntity stepEntity)
     {
         var stack = new Stack<StepEntity>();
         var attrLists = new Stack<List<StepAttribute>>();
@@ -683,24 +683,91 @@ unsafe class ExpResolver2
         return new StepAttribute(type, attrName);
     }
 
+    List<StepEntity> GetExpressionSubOpEntities(Expression_* expression, Dictionary<string, StepEntity> entitiesDict)
+    {
+        if (expression->type->u.type->body->type == type_enum.oneof_)
+        {
+            var list = new List<StepEntity>();
+            LISTdo<Expression_>(expression->u.list, arg =>
+            {
+                list.Add(entitiesDict[arg->symbol.Name]);
+            });
+            return list;
+        }
+        else if (expression->type->u.type->body->type == type_enum.entity_)
+        {
+            return [entitiesDict[expression->symbol.Name]];
+        }
+        throw new NotImplementedException($"Expression type {expression->type->u.type->body->type} not implemented");
+    }
+    public static HashSet<StepEntity> GetEntityAllSupers(StepEntity stepEntity)
+    {
+        var stack = new Stack<StepEntity>();
+        stack.Push(stepEntity);
+        var allSuper = new HashSet<StepEntity>();
+        while (stack.Count > 0)
+        {
+            var sup = stack.Pop();
+            allSuper.Add(sup);
+            if (sup is not StepEntity entity)
+            {
+                continue;
+            }
+            foreach (var super in entity.SuperTypes)
+            {
+                if (super is StepEntity superEntity)
+                {
+                    stack.Push(superEntity);
+                }
+            }
+        }
+        return allSuper;
+    }
+
     private void PrintComplexImp(Dictionary<nint, StepEntity> entitiesDict)
     {
+        var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
         var fileName = Path.Combine(outputDir, "StepComplexImp.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
         writer.Write("public class StepComplexImp : StepComplex");
+        HashSet<StepEntity> complexEntities = [];
+        foreach (var (p, obj) in entitiesDict)
+        {
+            var t = (Scope_*)p;
+            var subTypeExp = t->u.entity->subtype_expression;
+            if (subTypeExp == null)
+            {
+                continue;
+            }
+            if (subTypeExp->e.op_code == Op_Code.OP_ANDOR)
+            {
+                var allSupers = GetEntityAllSupers(obj);
+                foreach (var super in allSupers)
+                {
+                    complexEntities.Add(super);
+                }
+                var left = subTypeExp->e.op1;
+                var leftType = left->type->u.type->body->type;
+                var leftEntities = GetExpressionSubOpEntities(left, nameEntities);
+                var right = subTypeExp->e.op2;
+                var rightType = right->type->u.type->body->type;
+                var rightEntities = GetExpressionSubOpEntities(right, nameEntities);
+            }
+        }
+        complexEntities.Add(nameEntities["representation_context"]);
         var intefaces = new HashSet<string>();
-        foreach (var entity in entitiesDict.Values)
+        foreach (var entity in complexEntities)
         {
             intefaces.Add(EntityNameToInterfaceName(entity.Name));
         }
         if (intefaces.Count > 0)
         {
-            writer.Write($",{string.Join(", ", intefaces)}");
+            writer.Write($", {string.Join(", ", intefaces)}");
         }
         writer.WriteLine();
         writer.WriteLine("{");
-        foreach (var entity in entitiesDict.Values)
+        foreach (var entity in complexEntities)
         {
             foreach (var (type, attrName) in entity.Attributes)
             {
