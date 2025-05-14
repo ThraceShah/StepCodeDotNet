@@ -32,7 +32,7 @@ public record EnumExpress(string Value) : IExpress<string>;
 public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
 public record AsteriskExpress : IExpress;
 public record ListExpress(List<IExpress> ExpressList) : IExpress;
-public record ComplexExpress(List<IExpress> ExpressList) : IExpress;
+public record ComplexExpress(List<EntityExpress> ExpressList) : IExpress;
 public record RefExpress(int RefLineNumber) : IExpress;
 public record LineExpress(int LineNumber, IExpress Body) : IExpress;
 public record DollarExpress : IExpress;
@@ -119,7 +119,7 @@ public partial class StepParser(IStepObjCreator creater)
 
     private ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
     {
-        var result = new List<IExpress>();
+        var result = new List<EntityExpress>();
         for (int i = 0; i < listTokens.Length; i++)
         {
             switch (listTokens[i])
@@ -135,7 +135,7 @@ public partial class StepParser(IStepObjCreator creater)
                     {
                         var startIndex = i + 1;
                         var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
-                        result.AddRange(listExpress.ExpressList);
+                        result.AddRange(listExpress.ExpressList.Select(x => (EntityExpress)x));
                         i += endIndex + 1;
                         break;
                     }
