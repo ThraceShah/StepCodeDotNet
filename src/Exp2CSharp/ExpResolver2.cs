@@ -1000,6 +1000,10 @@ unsafe class ExpResolver2
         
         public static T GetEnum<T>(IExpress express) where T : struct, Enum
         {
+            if (express is not EnumExpress)
+            {
+                return (T)(object)-1;
+            }
             var enumExpress = (EnumExpress)express;
             return Enum.Parse<T>(enumExpress.Value);
         }
