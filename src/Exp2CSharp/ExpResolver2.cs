@@ -50,7 +50,7 @@ interface IStepAttribute
     bool IsCollection { get; }
 }
 
-record StepAttribute(IStepDefine Type, string Name);
+record StepAttribute(IStepDefine Type, string Name, StepEntity SubEntity);
 
 class StepEntity : IStepDataType
 {
@@ -58,6 +58,8 @@ class StepEntity : IStepDataType
     public List<IStepDefine> SuperTypes { get; set; } = [];
     public List<StepAttribute> Attributes { get; set; } = [];
     public List<StepAttribute> DerivedAttributes { get; set; } = [];
+    public List<StepAttribute> SelfAttributes { get; set; } = [];
+
 }
 
 class StepBaseDefine : IStepDataType
@@ -168,6 +170,7 @@ unsafe class ExpResolver2
         ["STRING"] = "System.String",
         ["BOOLEAN"] = "System.Boolean",
         ["NUMBER"] = "System.Double",
+        ["BINARY"] = "System.Byte[]",
     };
 
     (List<string> lefts, List<string> rights, List<string> complexies) complexEntities = ([], [], []);
@@ -256,6 +259,7 @@ unsafe class ExpResolver2
         type_enum.string_ => "STRING",
         type_enum.boolean_ => "BOOLEAN",
         type_enum.logical_ => "LOGICAL",
+        type_enum.binary_ => "BINARY",
         _ => type->symbol.Name
     };
 
@@ -286,7 +290,8 @@ unsafe class ExpResolver2
             {"STRING", new StepBaseDefine() { Name = "STRING", Type = "STRING" } },
             {"BOOLEAN", new StepBaseDefine() { Name = "BOOLEAN", Type = "BOOLEAN" } },
             {"NUMBER", new StepBaseDefine() { Name = "NUMBER", Type = "NUMBER" } },
-            {"LOGICAL", new StepEnum() { Name = "LOGICAL", Values = ["TRUE", "FALSE","UNKNOWN"] }}
+            {"BINARY", new StepBaseDefine() { Name = "BINARY", Type = "BINARY" } },
+            {"LOGICAL", new StepEnum() { Name = "LOGICAL", Values = ["TRUE", "FALSE","UNKNOWN"] }},
         };
         var enumsDict = new Dictionary<nint, StepEnum>();
         var selectsDict = new Dictionary<nint, StepSelect>();
@@ -363,7 +368,19 @@ unsafe class ExpResolver2
         {
             var t = (Scope_*)p;
             obj.Name = t->symbol.Name;
-            obj.ValueType = dict[(nint)TYPEget_base_type(t)];
+            var baseType = TYPEget_base_type(t);
+            if (dict.TryGetValue((nint)baseType, out var baseObj))
+            {
+                obj.ValueType = baseObj;
+            }
+            else if (nameDict.TryGetValue(baseType->symbol.Name, out var baseObj2))
+            {
+                obj.ValueType = baseObj2;
+            }
+            else
+            {
+                throw new NotImplementedException($"Base type {baseType->symbol.Name} not found in dict");
+            }
             LISTdo_links(TYPEget_body(t)->list, link =>
             {
                 var expr = (Expression_*)link->data;
@@ -389,14 +406,19 @@ unsafe class ExpResolver2
             {
                 (*attributes).For<Variable_>(attr =>
                 {
-                    if (VARis_derived(attr) is false)
+                    if (IsSelfAttr(attr) is true)
                     {
-                        var stepAttr = GetStepAttribute(attr, nameDict);
+                        var stepAttr = GetStepAttribute(attr, obj, nameDict);
+                        obj.SelfAttributes.Add(stepAttr);
+                    }
+                    else if (VARis_derived(attr) is false)
+                    {
+                        var stepAttr = GetStepAttribute(attr, obj, nameDict);
                         obj.Attributes.Add(stepAttr);
                     }
                     else
                     {
-                        var stepAttr = GetStepAttribute(attr, nameDict);
+                        var stepAttr = GetStepAttribute(attr, obj, nameDict);
                         obj.DerivedAttributes.Add(stepAttr);
                     }
                 });
@@ -411,6 +433,29 @@ unsafe class ExpResolver2
         PrintIEntityImp(entitiesDict);
         PrintComplexImp2(entitiesDict);
         PrintStaticInflect(entitiesDict, baseNameDict);
+    }
+
+    static bool IsSelfAttr(Variable_* attr)
+    {
+        var nameExpr = attr->name;
+        var opCode = nameExpr->e.op_code;
+        if (opCode != Op_Code.OP_DOT)
+        {
+            return false;
+        }
+        var op1 = nameExpr->e.op1;
+        var op2 = nameExpr->e.op2;
+        var op1Type = op1->e.op1->type;
+        var attrType = attr->type;
+        if (op1->e.op_code != Op_Code.OP_GROUP)
+        {
+            return false;
+        }
+        if (op1->e.op1->type->u.type->body->type != type_enum.self_)
+        {
+            return false;
+        }
+        return true;
     }
 
     private void PrintEnums(Dictionary<nint, StepEnum> enumsDict)
@@ -509,7 +554,7 @@ unsafe class ExpResolver2
             }
             writer.WriteLine();
             writer.WriteLine("{");
-            foreach (var (type, attrName) in obj.Attributes)
+            foreach (var (type, attrName, _) in obj.Attributes)
             {
                 writer.WriteLine($"    {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
             }
@@ -544,7 +589,7 @@ unsafe class ExpResolver2
             var attrList = attrLists.Pop();
             foreach (var a in attrList)
             {
-                if (list.Any(x => x.Name == a.Name))
+                if (list.Any(x => x.Name == a.Name && x.Type.Name == a.Type.Name))
                 {
                     continue;
                 }
@@ -567,9 +612,17 @@ unsafe class ExpResolver2
             writer.WriteLine("{");
             writer.WriteLine($"    public int line_id {{ get; set; }}");
             var allAttrs = GetEntityAllAttrs(obj);
-            foreach (var (type, attrName) in allAttrs)
+            HashSet<string> attrNames = new();
+            foreach (var (type, attrName, subEntity) in allAttrs)
             {
-                writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
+                if (attrNames.Add(attrName))
+                {
+                    writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
+                }
+                else
+                {
+                    writer.WriteLine($"    {GetStepTypeStrng(type)} {subEntity.Name}.{attrName} {{ get; set; }}");
+                }
             }
             writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
             writer.WriteLine("    {");
@@ -583,8 +636,8 @@ unsafe class ExpResolver2
                 writer.WriteLine($"            case {y}:");
                 for (int i = 0; i < y; i++)
                 {
-                    var (type, attrName) = allAttrs[i];
-                    writer.WriteLine($"                this.{attrName} = {GetInstanceCreateStr(type, i)};");
+                    var (type, attrName, subEntity) = allAttrs[i];
+                    writer.WriteLine($"                (({subEntity.Name})this).{attrName} = {GetInstanceCreateStr(type, i)};");
                 }
                 writer.WriteLine("                return;");
             }
@@ -625,7 +678,7 @@ unsafe class ExpResolver2
             {
                 var key = obj.Name;
                 var value = typeMap[obj.Type];
-                if (value == "System.String")
+                if (value == "System.String" || value == "System.Byte[]")
                 {
                     writer.Write($"public record {obj.Name}({value} Value): IStepBaseObj");
                 }
@@ -678,11 +731,11 @@ unsafe class ExpResolver2
         }
     }
 
-    private StepAttribute GetStepAttribute(Variable_* attr, Dictionary<string, IStepDataType> nameDict)
+    private StepAttribute GetStepAttribute(Variable_* attr, StepEntity subEntity, Dictionary<string, IStepDataType> nameDict)
     {
         var type = GetStepDataType(attr->type, nameDict);
         var attrName = attr->name->symbol.Name;
-        return new StepAttribute(type, attrName);
+        return new StepAttribute(type, attrName, subEntity);
     }
 
     List<StepEntity> GetExpressionSubOpEntities(Expression_* expression, Dictionary<string, StepEntity> entitiesDict)
@@ -725,72 +778,6 @@ unsafe class ExpResolver2
         }
         return allSuper;
     }
-
-    private void PrintComplexImp(Dictionary<nint, StepEntity> entitiesDict)
-    {
-        var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
-        var fileName = Path.Combine(outputDir, "StepComplexImp.cs");
-        using var writer = new StreamWriter(fileName);
-        writer.WriteLine($"namespace {NameSpace};");
-        writer.Write("public class StepComplexImp : StepComplex");
-        HashSet<StepEntity> complexEntities = [];
-        foreach (var (p, obj) in entitiesDict)
-        {
-            var t = (Scope_*)p;
-            var subTypeExp = t->u.entity->subtype_expression;
-            if (subTypeExp == null)
-            {
-                continue;
-            }
-            if (subTypeExp->e.op_code == Op_Code.OP_ANDOR)
-            {
-                var allSupers = GetEntityAllSupers(obj);
-                foreach (var super in allSupers)
-                {
-                    complexEntities.Add(super);
-                }
-                var left = subTypeExp->e.op1;
-                var leftType = left->type->u.type->body->type;
-                var leftEntities = GetExpressionSubOpEntities(left, nameEntities);
-                var right = subTypeExp->e.op2;
-                var rightType = right->type->u.type->body->type;
-                var rightEntities = GetExpressionSubOpEntities(right, nameEntities);
-            }
-        }
-        complexEntities.Add(nameEntities["representation_context"]);
-        var intefaces = new HashSet<string>();
-        foreach (var entity in complexEntities)
-        {
-            intefaces.Add(EntityNameToInterfaceName(entity.Name));
-        }
-        if (intefaces.Count > 0)
-        {
-            writer.Write($", {string.Join(", ", intefaces)}");
-        }
-        writer.WriteLine();
-        writer.WriteLine("{");
-        foreach (var entity in complexEntities)
-        {
-            foreach (var (type, attrName) in entity.Attributes)
-            {
-                writer.WriteLine($"    {GetStepTypeStrng(type)} {EntityNameToInterfaceName(entity.Name)}.{attrName} {{ get; set; }}");
-            }
-        }
-        writer.WriteLine("    public override void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
-        writer.WriteLine("    {");
-        writer.WriteLine("        switch (expression)");
-        writer.WriteLine("        {");
-        writer.WriteLine("            case ComplexExpress complexExpress:");
-        writer.WriteLine("                this.complex = [..complexExpress.ExpressList];");
-        writer.WriteLine("                break;");
-        writer.WriteLine("            default:");
-        writer.WriteLine("                throw new NotImplementedException();");
-        writer.WriteLine("        }");
-        writer.WriteLine("    }");
-        writer.WriteLine("}");
-
-    }
-
     private void PrintComplexImp2(Dictionary<nint, StepEntity> entitiesDict)
     {
         var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
@@ -846,11 +833,11 @@ unsafe class ExpResolver2
             writer.WriteLine("{");
             writer.WriteLine($"    public int line_id {{ get; set; }}");
             var leftAllAttrs = GetEntityAllAttrs(left);
-            foreach (var (type, attrName) in leftAllAttrs)
+            foreach (var (type, attrName, _) in leftAllAttrs)
             {
                 writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
             }
-            foreach (var (type, attrName) in right.Attributes)
+            foreach (var (type, attrName, _) in right.Attributes)
             {
                 writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
             }
@@ -888,7 +875,7 @@ unsafe class ExpResolver2
                     writer.WriteLine($"            case {y}:");
                     for (int i = 0; i < y; i++)
                     {
-                        var (type, attrName) = super.Attributes[i];
+                        var (type, attrName, _) = super.Attributes[i];
                         writer.WriteLine($"                obj.{attrName} = {GetInstanceCreateStr(type, i)};");
                     }
                     writer.WriteLine("                return;");
@@ -1027,6 +1014,24 @@ unsafe class ExpResolver2
         {
             var integerExpress = (IntegerExpress)express;
             return integerExpress.Value;
+        }
+
+        public static double GetNUMBER(IExpress express)
+        {
+            if (express is RealExpress realExpress)
+            {
+                return realExpress.Value;
+            }
+            else if (express is IntegerExpress integerExpress)
+            {
+                return integerExpress.Value;
+            }
+            return 0.0;
+        }
+
+        public static byte[] GetBINARY(IExpress express)
+        {
+            throw new NotImplementedException();
         }
 
         
