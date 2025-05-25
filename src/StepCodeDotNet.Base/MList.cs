@@ -1,14 +1,13 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace StepCodeDotNet.Base;
 
-internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
+internal class MList<T>(int capacity)
 {
-    private T* _data = (T*)NativeMemory.Alloc((uint)(capacity * sizeof(T)));
+    private T[] _data = new T[capacity];
     private int _count = 0;
     private int _capacity = capacity;
-    private bool _isDisposed = false;
 
     public ref T this[int index]
     {
@@ -23,8 +22,7 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
     {
         get
         {
-            var (start, length) = range.GetOffsetAndLength(_count);
-            return new Span<T>(_data + start, length);
+            return _data[range];
         }
     }
 
@@ -33,9 +31,9 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
 
     public int Capacity => _capacity;
 
-    public T* Data => _data;
+    public Span<T> Data => _data;
 
-    public UMList() : this(4)
+    public MList() : this(4)
     {
     }
 
@@ -44,7 +42,9 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
         if (_capacity < min)
         {
             _capacity = _capacity == 0 ? 1 : _capacity * 2;
-            _data = (T*)NativeMemory.Realloc(_data, (uint)(_capacity * sizeof(T)));
+            var newData = new T[_capacity];
+            Array.Copy(_data, newData, _count);
+            _data = newData;
         }
     }
 
@@ -123,26 +123,23 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
 
     public ReadOnlySpan<T> AsReadOnlySpan()
     {
-        return new ReadOnlySpan<T>(_data, _count);
+        return new ReadOnlySpan<T>(_data, 0, _count);
     }
 
     public Span<T> AsSpan()
     {
-        return new Span<T>(_data, _count);
+        return new Span<T>(_data, 0, _count);
     }
 
     public Span<T> Slice(int start, int length)
     {
-        return new Span<T>(_data + start, length);
+        return new Span<T>(_data, start, length);
     }
 
     public T[] ToArray()
     {
         var array = new T[_count];
-        for (int i = 0; i < _count; i++)
-        {
-            array[i] = _data[i];
-        }
+        Array.Copy(_data, array, _count);
         return array;
     }
 
@@ -151,75 +148,30 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
         _count = 0;
     }
 
-    public void Fit()
-    {
-        if (_count == _capacity)
-        {
-            return;
-        }
-        _capacity = _count;
-        _data = (T*)NativeMemory.Realloc(_data, (uint)(_capacity * sizeof(T)));
-    }
 
-    public static implicit operator Span<T>(UMList<T> list)
+    public static implicit operator Span<T>(MList<T> list)
     {
         return list.AsSpan();
     }
 
-    public static implicit operator ReadOnlySpan<T>(UMList<T> list)
+    public static implicit operator ReadOnlySpan<T>(MList<T> list)
     {
         return list.AsReadOnlySpan();
     }
 
-    public static implicit operator T*(UMList<T> list)
-    {
-        return list._data;
-    }
-
-    public static implicit operator T[](UMList<T> list)
+    public static implicit operator T[](MList<T> list)
     {
         return list.ToArray();
     }
-
 
     public Enumerator GetEnumerator()
     {
         return new Enumerator(_data, _count);
     }
 
-    protected virtual void Dispose(bool disposing)
+    public ref struct Enumerator(T[] data, int count)
     {
-        if (_isDisposed)
-            return;
-
-        if (disposing)
-        {
-            // Free managed resources
-        }
-
-        // Free unmanaged resources
-        NativeMemory.Free(_data);
-        _data = null;
-        _count = 0;
-        _capacity = 0;
-
-        _isDisposed = true;
-    }
-
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
-    ~UMList()
-    {
-        Dispose(false);
-    }
-
-    public ref struct Enumerator(T* data, int count)
-    {
-        private readonly T* _data = data;
+        private readonly T[] _data = data;
         private readonly int _count = count;
         private int index = -1;
 

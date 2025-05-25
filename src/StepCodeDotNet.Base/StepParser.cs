@@ -1,5 +1,6 @@
 ﻿namespace StepCodeDotNet.Base;
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -49,27 +50,37 @@ public partial class StepParser(IStepObjCreator creater)
 
     public IStepObj[] Resolve(string stepPath)
     {
+        var stopWatch = Stopwatch.StartNew();
         var tokenLists = Tokenize(stepPath);
+        stopWatch.Stop();
+        Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
 #if DEBUG
         PrintTokens(tokenLists);
 #endif
+        // stopWatch.Restart();
+        // var expressList = tokenLists
+        //     .AsParallel()
+        //     .Select(lineTokens => ResolveLine(lineTokens))
+        //     .ToList();
+
         var expressList = new List<LineExpress>();
-        var lineTokens = new List<IStepToken>();
-        foreach (var tokens in tokenLists)
+        foreach (var lineTokens in tokenLists)
         {
-            lineTokens.AddRange(tokens);
-            if (lineTokens[^1] is not SemicolonToken)
-            {
-                continue;
-            }
-            var lineExpress = ResolveLine(lineTokens.ToArray());
+            var lineExpress = ResolveLine(lineTokens);
             expressList.Add(lineExpress);
-            lineTokens.Clear();
         }
-        return creater.CreateStepObjs(expressList);
+
+        stopWatch.Stop();
+        Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+
+        stopWatch.Restart();
+        var stepObjs = creater.CreateStepObjs(expressList);
+        stopWatch.Stop();
+        Console.WriteLine($"Object creation took: {stopWatch.ElapsedMilliseconds} ms");
+        return stepObjs;
     }
 
-    private (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
+    private static (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
     {
         var result = new List<IExpress>();
         for (int i = 0; i < listTokens.Length; i++)
@@ -124,7 +135,7 @@ public partial class StepParser(IStepObjCreator creater)
         return (new ListExpress(result), 0);
     }
 
-    private ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
+    private static ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
     {
         var result = new List<EntityExpress>();
         for (int i = 0; i < listTokens.Length; i++)
@@ -156,7 +167,7 @@ public partial class StepParser(IStepObjCreator creater)
     }
 
 
-    private (EntityExpress, int) ResolveEntity(ReadOnlySpan<IStepToken> entityTokens)
+    private static (EntityExpress, int) ResolveEntity(ReadOnlySpan<IStepToken> entityTokens)
     {
         if (entityTokens.Length < 3)
         {
@@ -224,7 +235,7 @@ public partial class StepParser(IStepObjCreator creater)
         return (new EntityExpress(entityName, args), 0);
     }
 
-    private LineExpress ResolveLine(ReadOnlySpan<IStepToken> lineTokens)
+    private static LineExpress ResolveLine(ReadOnlySpan<IStepToken> lineTokens)
     {
         if (lineTokens.Length < 3)
         {
@@ -241,7 +252,7 @@ public partial class StepParser(IStepObjCreator creater)
         }
         switch (lineTokens[2])
         {
-            case EntityToken entity:
+            case EntityToken:
                 var (entityExpress, _) = ResolveEntity(lineTokens[2..]);
                 return new LineExpress(lineNumberValue, entityExpress);
             case LeftBracketToken:
@@ -252,7 +263,7 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private static void PrintTokens(List<List<IStepToken>> tokens)
+    private static void PrintTokens(List<MList<IStepToken>> tokens)
     {
         foreach (var lineTokens in tokens)
         {
@@ -421,9 +432,9 @@ public partial class StepParser(IStepObjCreator creater)
         return (new EntityToken(sb.ToString()), endIndex);
     }
 
-    private static List<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
+    private static MList<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
     {
-        var tokens = new List<IStepToken>();
+        var tokens = new MList<IStepToken>();
         for (int i = 0; i < line.Length; i++)
         {
             var c = line[i];
@@ -492,12 +503,12 @@ public partial class StepParser(IStepObjCreator creater)
         return tokens;
     }
 
-    private static List<List<IStepToken>> Tokenize(string stepFile)
+    private static List<MList<IStepToken>> Tokenize(string stepFile)
     {
         using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
         using var reader = new BinaryReader(fileStream);
         SkipHeader(reader);
-        var tokens = new List<List<IStepToken>>();
+        var tokens = new List<MList<IStepToken>>();
         using UMList<byte> sb = new(2048);
         Span<byte> buffer = stackalloc byte[1];
         while (reader.Read(buffer) > 0)
