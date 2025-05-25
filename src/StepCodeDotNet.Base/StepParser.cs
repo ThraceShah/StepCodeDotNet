@@ -1,9 +1,11 @@
 ﻿namespace StepCodeDotNet.Base;
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 
 public interface IStepToken;
 public record LineNumberToken(int LineNumber) : IStepToken;
@@ -55,14 +57,9 @@ public partial class StepParser(IStepObjCreator creater)
         stopWatch.Stop();
         Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
 #if DEBUG
-        PrintTokens(tokenLists);
+        // PrintTokens(tokenLists);
 #endif
-        // stopWatch.Restart();
-        // var expressList = tokenLists
-        //     .AsParallel()
-        //     .Select(lineTokens => ResolveLine(lineTokens))
-        //     .ToList();
-
+        stopWatch.Restart();
         var expressList = new List<LineExpress>();
         foreach (var lineTokens in tokenLists)
         {
@@ -434,7 +431,7 @@ public partial class StepParser(IStepObjCreator creater)
 
     private static MList<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
     {
-        var tokens = new MList<IStepToken>();
+        var tokens = new MList<IStepToken>(64);
         for (int i = 0; i < line.Length; i++)
         {
             var c = line[i];
@@ -503,37 +500,77 @@ public partial class StepParser(IStepObjCreator creater)
         return tokens;
     }
 
-    private static List<MList<IStepToken>> Tokenize(string stepFile)
+    private static ConcurrentBag<MList<IStepToken>> Tokenize(string stepFile)
     {
         using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
         using var reader = new BinaryReader(fileStream);
         SkipHeader(reader);
-        var tokens = new List<MList<IStepToken>>();
-        using UMList<byte> sb = new(2048);
-        Span<byte> buffer = stackalloc byte[1];
-        while (reader.Read(buffer) > 0)
+
+
+        var tokens = new ConcurrentBag<MList<IStepToken>>();
+        var channel = Channel.CreateUnbounded<string[]>();
+        const int batchSize = 100;
+
+        var producer = Task.Run(() =>
         {
-            if (buffer[0] == '\r')
+            var producerWatch = Stopwatch.StartNew();
+            var batch = new string[batchSize];
+            int batchIndex = 0;
+            using UMList<byte> sb = new(2048);
+            Span<byte> buffer = stackalloc byte[1];
+            while (reader.Read(buffer) > 0)
             {
-                continue;
-            }
-            if (buffer[0] == '\n')
-            {
-                continue;
-            }
-            sb.Add(buffer[0]);
-            if (buffer[0] == ';')
-            {
-                var line = _gb18030.GetString(sb.AsReadOnlySpan());
-                sb.Clear();
-                if (line.StartsWith("ENDSEC;"))
+                if (buffer[0] == '\r')
                 {
-                    break;
+                    continue;
                 }
-                var lineTokens = TokenizeLine(line);
-                tokens.Add(lineTokens);
+                if (buffer[0] == '\n')
+                {
+                    continue;
+                }
+                sb.Add(buffer[0]);
+                if (buffer[0] == ';')
+                {
+                    var line = _gb18030.GetString(sb.AsReadOnlySpan());
+                    sb.Clear();
+                    if (line.StartsWith("ENDSEC;"))
+                    {
+                        break;
+                    }
+                    batch[batchIndex++] = line;
+                    if (batchIndex == batchSize)
+                    {
+                        channel.Writer.WriteAsync(batch);
+                        batch = new string[batchSize];
+                        batchIndex = 0;
+                    }
+                }
             }
-        }
+            if (batchIndex > 0)
+            {
+                Array.Resize(ref batch, batchIndex);
+                channel.Writer.TryWrite(batch);
+            }
+            channel.Writer.Complete();
+            producerWatch.Stop();
+            Console.WriteLine($"Producer completed in {producerWatch.ElapsedMilliseconds} ms");
+        });
+        var consumerWatch = Stopwatch.StartNew();
+        int workerCount = Environment.ProcessorCount;
+        var consumers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(async () =>
+        {
+            await foreach (var batch in channel.Reader.ReadAllAsync())
+            {
+                foreach (var line in batch)
+                {
+                    var lineTokens = TokenizeLine(line);
+                    tokens.Add(lineTokens);
+                }
+            }
+        })).ToArray();
+        Task.WaitAll(consumers);
+        consumerWatch.Stop();
+        Console.WriteLine($"Consumer completed in {consumerWatch.ElapsedMilliseconds} ms");
         return tokens;
     }
 

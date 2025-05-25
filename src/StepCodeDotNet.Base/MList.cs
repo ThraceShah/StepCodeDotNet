@@ -42,9 +42,7 @@ internal class MList<T>(int capacity)
         if (_capacity < min)
         {
             _capacity = _capacity == 0 ? 1 : _capacity * 2;
-            var newData = new T[_capacity];
-            Array.Copy(_data, newData, _count);
-            _data = newData;
+            Array.Resize(ref _data, _capacity);
         }
     }
 

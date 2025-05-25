@@ -2,7 +2,7 @@
 using System.Diagnostics;
 using StepCodeDotNet.Base;
 
-var stepFile = @"D:\model\protofiles\大模型\m1250960-001_asm_20230327.stp";
+var stepFile = @"C:\Users\thrace\dev\protofiles\大模型\42u-wof-rack-top-assy-v2.STEP";
 var creator = StepCodeDotNet.Gen.config_control_design.StepObjCreator.Instance;
 var parser = new StepCodeDotNet.Base.StepParser(creator);
 var watch = new Stopwatch();
