@@ -829,13 +829,22 @@ unsafe class ExpResolver2
                 }
             }
         }
-        var global_uncertainty_assigned_context = nameEntities["global_uncertainty_assigned_context"];
-        var global_unit_assigned_context = nameEntities["global_unit_assigned_context"];
-        complexEntities.lefts.Add(global_uncertainty_assigned_context.Name);
-        complexEntities.rights.Add(global_unit_assigned_context.Name);
-        complexEntities.complexies.Add($"{global_uncertainty_assigned_context.Name}_and_{global_unit_assigned_context.Name}");
-        PrintComplexEntityImp(writer, global_uncertainty_assigned_context, global_unit_assigned_context);
-
+        {
+            var global_uncertainty_assigned_context = nameEntities["global_uncertainty_assigned_context"];
+            var global_unit_assigned_context = nameEntities["global_unit_assigned_context"];
+            complexEntities.lefts.Add(global_uncertainty_assigned_context.Name);
+            complexEntities.rights.Add(global_unit_assigned_context.Name);
+            complexEntities.complexies.Add($"{global_uncertainty_assigned_context.Name}_and_{global_unit_assigned_context.Name}");
+            PrintComplexEntityImp(writer, global_uncertainty_assigned_context, global_unit_assigned_context);
+        }
+        {
+            var c1 = nameEntities["representation_relationship_with_transformation"];
+            var c2 = nameEntities["shape_representation_relationship"];
+            complexEntities.lefts.Add(c1.Name);
+            complexEntities.rights.Add(c2.Name);
+            complexEntities.complexies.Add($"{c1.Name}_and_{c2.Name}");
+            PrintComplexEntityImp(writer, c1, c2);
+        }
     }
 
     string GetComplexName(params StepEntity[] entities)
@@ -1092,7 +1101,7 @@ unsafe class ExpResolver2
             return Enum.Parse<T>(enumExpress.Value);
         }
 
-        
+
         public static double GetREAL(IExpress express)
         {
             if (express is RealExpress realExpress)
@@ -1106,7 +1115,7 @@ unsafe class ExpResolver2
             return 0.0;
         }
 
-        
+
         public static int GetINTEGER(IExpress express)
         {
             var integerExpress = (IntegerExpress)express;
@@ -1131,21 +1140,27 @@ unsafe class ExpResolver2
             throw new NotImplementedException();
         }
 
-        
+
         public static string GetSTRING(IExpress express)
         {
-            var stringExpress = (StringExpress)express;
-            return stringExpress.Value;
+            if (express is StringExpress stringExpress)
+            {
+                return stringExpress.Value;
+            }
+            return string.Empty;
         }
 
-        
+
         public static bool GetBOOLEAN(IExpress express)
         {
-            var booleanExpress = (BooleanExpress)express;
-            return booleanExpress.Value;
+            if (express is BooleanExpress booleanExpress)
+            {
+                return booleanExpress.Value;
+            }
+            return true;
         }
 
-        
+
         public static T GetEntity<T>(IExpress express, Dictionary<int, IStepObj> refMap) where T : class
         {
             if (express is EntityExpress entityExpress)
@@ -1159,7 +1174,10 @@ unsafe class ExpResolver2
             }
             else if (express is RefExpress refExpress)
             {
-                return refMap[refExpress.RefLineNumber] as T;
+                if (refMap.TryGetValue(refExpress.RefLineNumber, out var stepObj))
+                {
+                    return stepObj as T;
+                }
             }
             return default;
         }
@@ -1173,10 +1191,13 @@ unsafe class ExpResolver2
             }
             return default;
         }
-        
+
         private static List<T> GetRefAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
         {
-            var listExpress = (ListExpress)express;
+            if (express is not ListExpress listExpress)
+            {
+                return [];
+            }
             var result = new List<T>(listExpress.ExpressList.Count);
             foreach (var item in listExpress.ExpressList)
             {
@@ -1184,10 +1205,13 @@ unsafe class ExpResolver2
             }
             return result;
         }
-        
+
         private static object GetRefAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type listType)
         {
-            var listExpress = (ListExpress)express;
+            if (express is not ListExpress listExpress)
+            {
+                return null;
+            }
             var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
             foreach (var item in listExpress.ExpressList)
             {
@@ -1195,7 +1219,6 @@ unsafe class ExpResolver2
             }
             return result;
         }
-
         
         public static object GetList(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
         {
@@ -1333,6 +1356,11 @@ unsafe class ExpResolver2
                         break;
                     case ComplexExpress complexExpress:
                         var complex = CreateComplex(complexExpress);
+                        if (complex == null)
+                        {
+                            Console.WriteLine($"Complex ({string.Join(",", complexExpress.ExpressList.Select(e => e.EntityName))}) not found.");
+                            break;
+                        }
                         complex.line_id = lineExpress.LineNumber;
                         stepObjs[i] = complex;
                         refMap.Add(lineExpress.LineNumber, complex);

@@ -1,5 +1,6 @@
 ﻿namespace StepCodeDotNet.Base;
 
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -39,6 +40,12 @@ public record DollarExpress : IExpress;
 
 public partial class StepParser(IStepObjCreator creater)
 {
+    private static readonly Encoding _gb18030;
+    static StepParser()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        _gb18030 = Encoding.GetEncoding("GB18030");
+    }
 
     public IStepObj[] Resolve(string stepPath)
     {
@@ -245,7 +252,7 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private void PrintTokens(List<List<IStepToken>> tokens)
+    private static void PrintTokens(List<List<IStepToken>> tokens)
     {
         foreach (var lineTokens in tokens)
         {
@@ -307,10 +314,12 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private void SkipHeader(BinaryReader reader)
+    static readonly byte[] _dataStart = Encoding.ASCII.GetBytes("DATA;");
+
+    private static void SkipHeader(BinaryReader reader)
     {
-        StringBuilder sb = new();
-        Span<char> buffer = stackalloc char[1];
+        using UMList<byte> sb = new(2048);
+        Span<byte> buffer = stackalloc byte[1];
         while (reader.Read(buffer) > 0)
         {
             if (buffer[0] == '\r')
@@ -321,20 +330,19 @@ public partial class StepParser(IStepObjCreator creater)
             {
                 continue;
             }
-            sb.Append(buffer[0]);
+            sb.Add(buffer[0]);
             if (buffer[0] == ';')
             {
-                var line = sb.ToString();
-                sb.Clear();
-                if (line.StartsWith("DATA;"))
+                if (sb.AsReadOnlySpan().StartsWith(_dataStart))
                 {
                     break;
                 }
+                sb.Clear();
             }
         }
     }
 
-    private (LineNumberToken token, int endIndex) GetLineNumber(ReadOnlySpan<char> line)
+    private static (LineNumberToken token, int endIndex) GetLineNumber(ReadOnlySpan<char> line)
     {
         var start = 0;
         while (char.IsDigit(line[start]) && start < line.Length)
@@ -345,7 +353,7 @@ public partial class StepParser(IStepObjCreator creater)
         return (new(value), start);
     }
 
-    private (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<char> line)
     {
         StringBuilder sb = new();
         var endIndex = 0;
@@ -359,18 +367,15 @@ public partial class StepParser(IStepObjCreator creater)
             sb.Append(line[i]);
         }
         var str = sb.ToString();
-        switch (str)
+        return str switch
         {
-            case "T":
-                return (new BooleanToken(true), endIndex);
-            case "F":
-                return (new BooleanToken(false), endIndex);
-            default:
-                return (new EnumToken(str), endIndex);
-        }
+            "T" => ((IStepToken token, int endIndex))(new BooleanToken(true), endIndex),
+            "F" => ((IStepToken token, int endIndex))(new BooleanToken(false), endIndex),
+            _ => ((IStepToken token, int endIndex))(new EnumToken(str), endIndex),
+        };
     }
 
-    private (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<char> line)
     {
         StringBuilder sb = new();
         var endIndex = 0;
@@ -386,7 +391,7 @@ public partial class StepParser(IStepObjCreator creater)
         return (new StringToken(sb.ToString()), endIndex);
     }
 
-    private (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<char> line)
     {
         var number = NumberRegex().Match(line.ToString());
         var str = number.Value;
@@ -400,7 +405,7 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<char> line)
+    private static (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<char> line)
     {
         StringBuilder sb = new();
         var endIndex = 0;
@@ -416,7 +421,7 @@ public partial class StepParser(IStepObjCreator creater)
         return (new EntityToken(sb.ToString()), endIndex);
     }
 
-    private List<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
+    private static List<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
     {
         var tokens = new List<IStepToken>();
         for (int i = 0; i < line.Length; i++)
@@ -487,14 +492,14 @@ public partial class StepParser(IStepObjCreator creater)
         return tokens;
     }
 
-    private List<List<IStepToken>> Tokenize(string stepFile)
+    private static List<List<IStepToken>> Tokenize(string stepFile)
     {
         using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
-        using var reader = new BinaryReader(fileStream, Encoding.UTF8);
+        using var reader = new BinaryReader(fileStream);
         SkipHeader(reader);
         var tokens = new List<List<IStepToken>>();
-        StringBuilder sb = new();
-        Span<char> buffer = stackalloc char[1];
+        using UMList<byte> sb = new(2048);
+        Span<byte> buffer = stackalloc byte[1];
         while (reader.Read(buffer) > 0)
         {
             if (buffer[0] == '\r')
@@ -505,10 +510,10 @@ public partial class StepParser(IStepObjCreator creater)
             {
                 continue;
             }
-            sb.Append(buffer[0]);
+            sb.Add(buffer[0]);
             if (buffer[0] == ';')
             {
-                var line = sb.ToString();
+                var line = _gb18030.GetString(sb.AsReadOnlySpan());
                 sb.Clear();
                 if (line.StartsWith("ENDSEC;"))
                 {
@@ -518,15 +523,6 @@ public partial class StepParser(IStepObjCreator creater)
                 tokens.Add(lineTokens);
             }
         }
-        // while ((line = reader.ReadLine()) != null)
-        // {
-        //     if (line.StartsWith("ENDSEC;"))
-        //     {
-        //         break;
-        //     }
-        //     var lineTokens = TokenizeLine(line);
-        //     tokens.Add(lineTokens);
-        // }
         return tokens;
     }
 

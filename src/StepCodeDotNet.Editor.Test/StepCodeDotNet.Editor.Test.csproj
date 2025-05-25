@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\StepCodeDotNet.Base\StepCodeDotNet.Base.csproj" />
     <ProjectReference Include="..\StepCodeDotNet.Gen/ap214e3_2010/StepCodeDotNet.Gen.automotive_design.csproj" />
+    <ProjectReference Include="..\StepCodeDotNet.Gen/config_control_design/StepCodeDotNet.Gen.config_control_design.csproj" />
   </ItemGroup>
 
 </Project>
