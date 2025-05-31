@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Editor.Test"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Gen.config_control_design", "StepCodeDotNet.Gen\config_control_design\StepCodeDotNet.Gen.config_control_design.csproj", "{693F3A24-DA25-F481-77BC-05FB81B0230E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StepCodeDotNet.Gen.automotive_design", "StepCodeDotNet.Gen\ap214e3_2010\StepCodeDotNet.Gen.automotive_design.csproj", "{F1084709-BEA5-9007-F9B9-6A88A16835C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{693F3A24-DA25-F481-77BC-05FB81B0230E}.Release|x64.Build.0 = Release|Any CPU
 		{693F3A24-DA25-F481-77BC-05FB81B0230E}.Release|x86.ActiveCfg = Release|Any CPU
 		{693F3A24-DA25-F481-77BC-05FB81B0230E}.Release|x86.Build.0 = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|x64.Build.0 = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Debug|x86.Build.0 = Debug|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|x64.ActiveCfg = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|x64.Build.0 = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|x86.ActiveCfg = Release|Any CPU
+		{F1084709-BEA5-9007-F9B9-6A88A16835C9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

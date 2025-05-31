@@ -52,10 +52,8 @@ public partial class StepParser(IStepObjCreator creater)
 
     public IStepObj[] Resolve(string stepPath)
     {
+        var tokenLists = TokenizeSync(stepPath);
         var stopWatch = Stopwatch.StartNew();
-        var tokenLists = Tokenize(stepPath);
-        stopWatch.Stop();
-        Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
 #if DEBUG
         // PrintTokens(tokenLists);
 #endif
@@ -324,22 +322,22 @@ public partial class StepParser(IStepObjCreator creater)
 
     static readonly byte[] _dataStart = Encoding.ASCII.GetBytes("DATA;");
 
-    private static void SkipHeader(BinaryReader reader)
+    private static void SkipHeader(FileStream reader)
     {
-        using UMList<byte> sb = new(2048);
-        Span<byte> buffer = stackalloc byte[1];
-        while (reader.Read(buffer) > 0)
+        using UMList<byte> sb = new(1024);
+        int buffer=0;
+        while ((buffer=reader.ReadByte())!=-1)
         {
-            if (buffer[0] == '\r')
+            if (buffer == '\r')
             {
                 continue;
             }
-            if (buffer[0] == '\n')
+            if (buffer == '\n')
             {
                 continue;
             }
-            sb.Add(buffer[0]);
-            if (buffer[0] == ';')
+            sb.Add((byte)buffer);
+            if (buffer == ';')
             {
                 if (sb.AsReadOnlySpan().StartsWith(_dataStart))
                 {
@@ -500,11 +498,48 @@ public partial class StepParser(IStepObjCreator creater)
         return tokens;
     }
 
+    private static List<MList<IStepToken>> TokenizeSync(string stepFile)
+    {
+        var stopWatch = Stopwatch.StartNew();
+        using var reader = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
+        SkipHeader(reader);
+        var tokens = new List<MList<IStepToken>>();
+        using UMList<byte> sb = new(2048);
+        int buffer = 0;
+        while ((buffer=reader.ReadByte())!=-1)
+        {
+            if (buffer == '\r')
+            {
+                continue;
+            }
+            if (buffer == '\n')
+            {
+                continue;
+            }
+            sb.Add((byte)buffer);
+            if (buffer == ';')
+            {
+                var line = _gb18030.GetString(sb.AsReadOnlySpan());
+                sb.Clear();
+                if (line.StartsWith("ENDSEC;"))
+                {
+                    break;
+                }
+                var lineTokens = TokenizeLine(line);
+                tokens.Add(lineTokens);
+            }
+        }
+        stopWatch.Stop();
+        Console.WriteLine($"Synchronous tokenization completed in {stopWatch.ElapsedMilliseconds} ms, total lines: {tokens.Count}");
+        return tokens;
+    }
+
+
     private static ConcurrentBag<MList<IStepToken>> Tokenize(string stepFile)
     {
         using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
         using var reader = new BinaryReader(fileStream);
-        SkipHeader(reader);
+        SkipHeader(fileStream);
 
 
         var tokens = new ConcurrentBag<MList<IStepToken>>();
