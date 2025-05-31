@@ -29,17 +29,17 @@ public interface IExpress<T> : IExpress
     T Value { get; }
 }
 public record StringExpress(string Value) : IExpress<string>;
-public record IntegerExpress(int Value) : IExpress<int>;
-public record RealExpress(double Value) : IExpress<double>;
-public record BooleanExpress(bool Value) : IExpress<bool>;
+public record struct IntegerExpress(int Value) : IExpress<int>;
+public record struct RealExpress(double Value) : IExpress<double>;
+public record struct BooleanExpress(bool Value) : IExpress<bool>;
 public record EnumExpress(string Value) : IExpress<string>;
 public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
-public record AsteriskExpress : IExpress;
+public record struct AsteriskExpress : IExpress;
 public record ListExpress(List<IExpress> ExpressList) : IExpress;
 public record ComplexExpress(List<EntityExpress> ExpressList) : IExpress;
-public record RefExpress(int RefLineNumber) : IExpress;
+public record struct RefExpress(int RefLineNumber) : IExpress;
 public record LineExpress(int LineNumber, IExpress Body) : IExpress;
-public record DollarExpress : IExpress;
+public record struct DollarExpress : IExpress;
 
 public partial class StepParser(IStepObjCreator creater)
 {
@@ -325,8 +325,8 @@ public partial class StepParser(IStepObjCreator creater)
     private static void SkipHeader(FileStream reader)
     {
         using UMList<byte> sb = new(1024);
-        int buffer=0;
-        while ((buffer=reader.ReadByte())!=-1)
+        int buffer = 0;
+        while ((buffer = reader.ReadByte()) != -1)
         {
             if (buffer == '\r')
             {
@@ -348,10 +348,10 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private static (LineNumberToken token, int endIndex) GetLineNumber(ReadOnlySpan<char> line)
+    private static (LineNumberToken token, int endIndex) GetLineNumber(ReadOnlySpan<byte> line)
     {
         var start = 0;
-        while (char.IsDigit(line[start]) && start < line.Length)
+        while (line[start].IsDigit() && start < line.Length)
         {
             start++;
         }
@@ -359,9 +359,10 @@ public partial class StepParser(IStepObjCreator creater)
         return (new(value), start);
     }
 
-    private static (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<byte> line)
     {
-        StringBuilder sb = new();
+        Span<byte> buffer = stackalloc byte[128];
+        UMSpanList<byte> sb = new(buffer);
         var endIndex = 0;
         for (int i = 0; i < line.Length; i++)
         {
@@ -370,20 +371,29 @@ public partial class StepParser(IStepObjCreator creater)
                 endIndex = i + 1;
                 break;
             }
-            sb.Append(line[i]);
+            sb.Add(line[i]);
         }
-        var str = sb.ToString();
-        return str switch
+        if (sb.Count == 0)
         {
-            "T" => ((IStepToken token, int endIndex))(new BooleanToken(true), endIndex),
-            "F" => ((IStepToken token, int endIndex))(new BooleanToken(false), endIndex),
-            _ => ((IStepToken token, int endIndex))(new EnumToken(str), endIndex),
-        };
+            return (new DollarToken(), endIndex);
+        }
+        if (sb.Count == 1)
+        {
+            if (sb[0] == 'T')
+            {
+                return ((IStepToken token, int endIndex))(new BooleanToken(true), endIndex);
+            }
+            else if (sb[0] == 'F')
+            {
+                return ((IStepToken token, int endIndex))(new BooleanToken(false), endIndex);
+            }
+        }
+        return ((IStepToken token, int endIndex))(new EnumToken(_gb18030.GetString(sb.AsReadOnlySpan())), endIndex);
     }
 
-    private static (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<byte> line)
     {
-        StringBuilder sb = new();
+        using UMList<byte> sb = new(128);
         var endIndex = 0;
         for (int i = 0; i < line.Length; i++)
         {
@@ -392,14 +402,14 @@ public partial class StepParser(IStepObjCreator creater)
                 endIndex = i + 1;
                 break;
             }
-            sb.Append(line[i]);
+            sb.Add(line[i]);
         }
-        return (new StringToken(sb.ToString()), endIndex);
+        return (new StringToken(_gb18030.GetString(sb.AsReadOnlySpan())), endIndex);
     }
 
-    private static (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<char> line)
+    private static (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<byte> line)
     {
-        var number = NumberRegex().Match(line.ToString());
+        var number = NumberRegex().Match(Encoding.ASCII.GetString(line));
         var str = number.Value;
         if (str.Contains('.'))
         {
@@ -411,23 +421,23 @@ public partial class StepParser(IStepObjCreator creater)
         }
     }
 
-    private static (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<char> line)
+    private static (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<byte> line)
     {
-        StringBuilder sb = new();
+        using UMList<byte> sb = new(128);
         var endIndex = 0;
         for (int i = 0; i < line.Length; i++)
         {
-            if (!char.IsLetterOrDigit(line[i]) && line[i] != '_')
+            if (!line[i].IsLetterOrDigit() && line[i] != '_')
             {
                 endIndex = i - 1;
                 break;
             }
-            sb.Append(line[i]);
+            sb.Add(line[i]);
         }
-        return (new EntityToken(sb.ToString()), endIndex);
+        return (new EntityToken(Encoding.ASCII.GetString(sb.AsReadOnlySpan())), endIndex);
     }
 
-    private static MList<IStepToken> TokenizeLine(ReadOnlySpan<char> line)
+    private static MList<IStepToken> TokenizeLine(ReadOnlySpan<byte> line)
     {
         var tokens = new MList<IStepToken>(64);
         for (int i = 0; i < line.Length; i++)
@@ -435,44 +445,44 @@ public partial class StepParser(IStepObjCreator creater)
             var c = line[i];
             switch (c)
             {
-                case ' ':
+                case (byte)' ':
                     break;
-                case '#':
+                case (byte)'#':
                     {
                         var (token, endIndex) = GetLineNumber(line[(i + 1)..]);
                         tokens.Add(token);
                         i += endIndex;
                         break;
                     }
-                case '=':
+                case (byte)'=':
                     tokens.Add(new EqualToken());
                     break;
-                case '(':
+                case (byte)'(':
                     tokens.Add(new LeftBracketToken());
                     break;
-                case ')':
+                case (byte)')':
                     tokens.Add(new RightBracketToken());
                     break;
-                case ',':
+                case (byte)',':
                     tokens.Add(new CommaToken());
                     break;
-                case ';':
+                case (byte)';':
                     tokens.Add(new SemicolonToken());
                     break;
-                case '*':
+                case (byte)'*':
                     tokens.Add(new AsteriskToken());
                     break;
-                case '$':
+                case (byte)'$':
                     tokens.Add(new DollarToken());
                     break;
-                case '.':
+                case (byte)'.':
                     {
                         var (token, endIndex) = GetEnumToken(line[(i + 1)..]);
                         tokens.Add(token);
                         i += endIndex;
                         break;
                     }
-                case '\'':
+                case (byte)'\'':
                     {
                         var (token, endIndex) = GetStringToken(line[(i + 1)..]);
                         tokens.Add(token);
@@ -480,13 +490,13 @@ public partial class StepParser(IStepObjCreator creater)
                         break;
                     }
                 default:
-                    if (char.IsDigit(c) || c == '+' || c == '-')
+                    if (c.IsDigit() || c == '+' || c == '-')
                     {
                         var (token, endIndex) = GetNumberToken(line[i..]);
                         tokens.Add(token);
                         i += endIndex;
                     }
-                    else if (char.IsLetter(c))
+                    else if (c.IsLetter())
                     {
                         var (token, endIndex) = GetEntityToken(line[i..]);
                         tokens.Add(token);
@@ -506,7 +516,7 @@ public partial class StepParser(IStepObjCreator creater)
         var tokens = new List<MList<IStepToken>>();
         using UMList<byte> sb = new(2048);
         int buffer = 0;
-        while ((buffer=reader.ReadByte())!=-1)
+        while ((buffer = reader.ReadByte()) != -1)
         {
             if (buffer == '\r')
             {
@@ -519,13 +529,20 @@ public partial class StepParser(IStepObjCreator creater)
             sb.Add((byte)buffer);
             if (buffer == ';')
             {
-                var line = _gb18030.GetString(sb.AsReadOnlySpan());
-                sb.Clear();
-                if (line.StartsWith("ENDSEC;"))
+                // var line = _gb18030.GetString(sb.AsReadOnlySpan());
+                // sb.Clear();
+                // if (line.StartsWith("ENDSEC;"))
+                // {
+                //     break;
+                // }
+                var line = sb.AsReadOnlySpan();
+                if (line.Length == 0 || line[0] != '#')
                 {
-                    break;
+                    sb.Clear();
+                    continue;
                 }
                 var lineTokens = TokenizeLine(line);
+                sb.Clear();
                 tokens.Add(lineTokens);
             }
         }
@@ -535,79 +552,79 @@ public partial class StepParser(IStepObjCreator creater)
     }
 
 
-    private static ConcurrentBag<MList<IStepToken>> Tokenize(string stepFile)
-    {
-        using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
-        using var reader = new BinaryReader(fileStream);
-        SkipHeader(fileStream);
+    // private static ConcurrentBag<MList<IStepToken>> Tokenize(string stepFile)
+    // {
+    //     using var fileStream = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
+    //     using var reader = new BinaryReader(fileStream);
+    //     SkipHeader(fileStream);
 
 
-        var tokens = new ConcurrentBag<MList<IStepToken>>();
-        var channel = Channel.CreateUnbounded<string[]>();
-        const int batchSize = 100;
+    //     var tokens = new ConcurrentBag<MList<IStepToken>>();
+    //     var channel = Channel.CreateUnbounded<string[]>();
+    //     const int batchSize = 100;
 
-        var producer = Task.Run(() =>
-        {
-            var producerWatch = Stopwatch.StartNew();
-            var batch = new string[batchSize];
-            int batchIndex = 0;
-            using UMList<byte> sb = new(2048);
-            Span<byte> buffer = stackalloc byte[1];
-            while (reader.Read(buffer) > 0)
-            {
-                if (buffer[0] == '\r')
-                {
-                    continue;
-                }
-                if (buffer[0] == '\n')
-                {
-                    continue;
-                }
-                sb.Add(buffer[0]);
-                if (buffer[0] == ';')
-                {
-                    var line = _gb18030.GetString(sb.AsReadOnlySpan());
-                    sb.Clear();
-                    if (line.StartsWith("ENDSEC;"))
-                    {
-                        break;
-                    }
-                    batch[batchIndex++] = line;
-                    if (batchIndex == batchSize)
-                    {
-                        channel.Writer.WriteAsync(batch);
-                        batch = new string[batchSize];
-                        batchIndex = 0;
-                    }
-                }
-            }
-            if (batchIndex > 0)
-            {
-                Array.Resize(ref batch, batchIndex);
-                channel.Writer.TryWrite(batch);
-            }
-            channel.Writer.Complete();
-            producerWatch.Stop();
-            Console.WriteLine($"Producer completed in {producerWatch.ElapsedMilliseconds} ms");
-        });
-        var consumerWatch = Stopwatch.StartNew();
-        int workerCount = Environment.ProcessorCount;
-        var consumers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(async () =>
-        {
-            await foreach (var batch in channel.Reader.ReadAllAsync())
-            {
-                foreach (var line in batch)
-                {
-                    var lineTokens = TokenizeLine(line);
-                    tokens.Add(lineTokens);
-                }
-            }
-        })).ToArray();
-        Task.WaitAll(consumers);
-        consumerWatch.Stop();
-        Console.WriteLine($"Consumer completed in {consumerWatch.ElapsedMilliseconds} ms");
-        return tokens;
-    }
+    //     var producer = Task.Run(() =>
+    //     {
+    //         var producerWatch = Stopwatch.StartNew();
+    //         var batch = new string[batchSize];
+    //         int batchIndex = 0;
+    //         using UMList<byte> sb = new(2048);
+    //         Span<byte> buffer = stackalloc byte[1];
+    //         while (reader.Read(buffer) > 0)
+    //         {
+    //             if (buffer[0] == '\r')
+    //             {
+    //                 continue;
+    //             }
+    //             if (buffer[0] == '\n')
+    //             {
+    //                 continue;
+    //             }
+    //             sb.Add(buffer[0]);
+    //             if (buffer[0] == ';')
+    //             {
+    //                 var line = _gb18030.GetString(sb.AsReadOnlySpan());
+    //                 sb.Clear();
+    //                 if (line.StartsWith("ENDSEC;"))
+    //                 {
+    //                     break;
+    //                 }
+    //                 batch[batchIndex++] = line;
+    //                 if (batchIndex == batchSize)
+    //                 {
+    //                     channel.Writer.WriteAsync(batch);
+    //                     batch = new string[batchSize];
+    //                     batchIndex = 0;
+    //                 }
+    //             }
+    //         }
+    //         if (batchIndex > 0)
+    //         {
+    //             Array.Resize(ref batch, batchIndex);
+    //             channel.Writer.TryWrite(batch);
+    //         }
+    //         channel.Writer.Complete();
+    //         producerWatch.Stop();
+    //         Console.WriteLine($"Producer completed in {producerWatch.ElapsedMilliseconds} ms");
+    //     });
+    //     var consumerWatch = Stopwatch.StartNew();
+    //     int workerCount = Environment.ProcessorCount;
+    //     var consumers = Enumerable.Range(0, workerCount).Select(_ => Task.Run(async () =>
+    //     {
+    //         await foreach (var batch in channel.Reader.ReadAllAsync())
+    //         {
+    //             foreach (var line in batch)
+    //             {
+    //                 var lineTokens = TokenizeLine(line);
+    //                 tokens.Add(lineTokens);
+    //             }
+    //         }
+    //     })).ToArray();
+    //     Task.WaitAll(consumers);
+    //     consumerWatch.Stop();
+    //     Console.WriteLine($"Consumer completed in {consumerWatch.ElapsedMilliseconds} ms");
+    //     return tokens;
+    // }
 
     [GeneratedRegex(@"^[-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?", RegexOptions.Compiled | RegexOptions.CultureInvariant)]
     private static partial Regex NumberRegex();

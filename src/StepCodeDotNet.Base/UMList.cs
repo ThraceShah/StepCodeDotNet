@@ -239,3 +239,38 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
     }
 
 }
+
+
+internal ref struct UMSpanList<T>(Span<T> buffer) where T : unmanaged
+{
+    private readonly Span<T> _buffer = buffer;
+    private int _count = 0;
+
+    public readonly ref T this[int index]
+    {
+        get => ref _buffer[index];
+    }
+
+    public readonly int Count => _count;
+
+    public void Add(T item)
+    {
+        _buffer[_count++] = item;
+    }
+
+    public void Clear()
+    {
+        _count = 0;
+    }
+
+    public readonly ReadOnlySpan<T> AsReadOnlySpan()
+    {
+        return _buffer[.._count];
+    }
+
+    public readonly Span<T> AsSpan()
+    {
+        return _buffer[.._count];
+    }
+
+}
