@@ -7,21 +7,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-public interface IStepToken;
-public record struct LineNumberToken(int LineNumber) : IStepToken;
-public record struct EqualToken : IStepToken;
-public record EntityToken(string EntityName) : IStepToken;
-public record struct LeftBracketToken : IStepToken;
-public record struct RightBracketToken : IStepToken;
-public record struct CommaToken : IStepToken;
-public record struct IntegerToken(int Value) : IStepToken;
-public record struct RealToken(double Value) : IStepToken;
-public record StringToken(string Value) : IStepToken;
-public record EnumToken(string Value) : IStepToken;
-public record struct SemicolonToken : IStepToken;
-public record struct AsteriskToken : IStepToken;
-public record struct BooleanToken(bool Value) : IStepToken;
-public record struct DollarToken : IStepToken;
 
 public interface IExpress;
 public interface IExpress<T> : IExpress
@@ -41,7 +26,7 @@ public record struct RefExpress(int RefLineNumber) : IExpress;
 public record LineExpress(int LineNumber, IExpress Body) : IExpress;
 public record struct DollarExpress : IExpress;
 
-public partial class StepParser(IStepObjCreator creater)
+public unsafe partial class StepParser(IStepObjCreator creater)
 {
     private static readonly Encoding _gb18030;
     static StepParser()
@@ -52,29 +37,33 @@ public partial class StepParser(IStepObjCreator creater)
 
     public IStepObj[] Resolve(string stepPath)
     {
-        var tokenLists = TokenizeSync(stepPath);
-        var stopWatch = Stopwatch.StartNew();
-#if DEBUG
-        // PrintTokens(tokenLists);
-#endif
-        stopWatch.Restart();
-        var expressList = new List<LineExpress>();
-        foreach (var lineTokens in tokenLists)
-        {
-            var lineExpress = ResolveLine(lineTokens);
-            expressList.Add(lineExpress);
-        }
+        using var tokenizer = new StepTokenizer(stepPath);
+        var tokenLists = tokenizer.TokenizeSync();
 
-        stopWatch.Stop();
-        Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+        //        var stopWatch = Stopwatch.StartNew();
+        //#if DEBUG
+        //        // PrintTokens(tokenLists);
+        //#endif
+        //        stopWatch.Restart();
+        //        var expressList = new List<LineExpress>();
+        //        foreach (var lineTokens in tokenLists)
+        //        {
+        //            var lineExpress = ResolveLine(lineTokens);
+        //            expressList.Add(lineExpress);
+        //        }
 
-        stopWatch.Restart();
-        var stepObjs = creater.CreateStepObjs(expressList);
-        stopWatch.Stop();
-        Console.WriteLine($"Object creation took: {stopWatch.ElapsedMilliseconds} ms");
-        return stepObjs;
+        //        stopWatch.Stop();
+        //        Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+
+        //        stopWatch.Restart();
+        //        var stepObjs = creater.CreateStepObjs(expressList);
+        //        stopWatch.Stop();
+        //        Console.WriteLine($"Object creation took: {stopWatch.ElapsedMilliseconds} ms");
+        //        return stepObjs;
+
+        return [];
     }
-
+    /*
     private static (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
     {
         var result = new List<IExpress>();
@@ -319,257 +308,8 @@ public partial class StepParser(IStepObjCreator creater)
             }
         }
     }
+    */
 
-    static readonly byte[] _dataStart = Encoding.ASCII.GetBytes("DATA;");
-
-    private static void SkipHeader(FileStream reader)
-    {
-        using UMList<byte> sb = new(1024);
-        int buffer = 0;
-        while ((buffer = reader.ReadByte()) != -1)
-        {
-            if (buffer == '\r')
-            {
-                continue;
-            }
-            if (buffer == '\n')
-            {
-                continue;
-            }
-            sb.Add((byte)buffer);
-            if (buffer == ';')
-            {
-                if (sb.AsReadOnlySpan().StartsWith(_dataStart))
-                {
-                    break;
-                }
-                sb.Clear();
-            }
-        }
-    }
-
-    private static (LineNumberToken token, int endIndex) GetLineNumber(ReadOnlySpan<byte> line)
-    {
-        var start = 0;
-        while (line[start].IsDigit() && start < line.Length)
-        {
-            start++;
-        }
-        var value = int.Parse(line[..start]);
-        return (new(value), start);
-    }
-
-    private static (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<byte> line)
-    {
-        Span<byte> buffer = stackalloc byte[128];
-        UMSpanList<byte> sb = new(buffer);
-        var endIndex = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == '.')
-            {
-                endIndex = i + 1;
-                break;
-            }
-            sb.Add(line[i]);
-        }
-        if (sb.Count == 0)
-        {
-            return (new DollarToken(), endIndex);
-        }
-        if (sb.Count == 1)
-        {
-            if (sb[0] == 'T')
-            {
-                return ((IStepToken token, int endIndex))(new BooleanToken(true), endIndex);
-            }
-            else if (sb[0] == 'F')
-            {
-                return ((IStepToken token, int endIndex))(new BooleanToken(false), endIndex);
-            }
-        }
-        return ((IStepToken token, int endIndex))(new EnumToken(_gb18030.GetString(sb.AsReadOnlySpan())), endIndex);
-    }
-
-    private static (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<byte> line)
-    {
-        using UMList<byte> sb = new(128);
-        var endIndex = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == '\'')
-            {
-                endIndex = i + 1;
-                break;
-            }
-            sb.Add(line[i]);
-        }
-        return (new StringToken(_gb18030.GetString(sb.AsReadOnlySpan())), endIndex);
-    }
-
-    private static (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<byte> line)
-    {
-        int endIndex = 1;
-        byte b;
-        bool isReal = false;
-        while (endIndex < line.Length)
-        {
-            b = line[endIndex];
-            if (b.IsDigit())
-            {
-                endIndex++;
-                continue;
-            }
-            if (b == '.')
-            {
-                endIndex++;
-                isReal = true;
-                continue;
-            }
-            if (b == 'e' || b == 'E' || b == '-' || b == '+')
-            {
-                endIndex++;
-            }
-            else
-            {
-                break;
-            }
-        }
-        var str = line[..endIndex];
-        if (isReal)
-        {
-            return (new RealToken(double.Parse(str)), endIndex - 1);
-        }
-        else
-        {
-            return (new IntegerToken(int.Parse(str)), endIndex - 1);
-        }
-
-    }
-
-    private static (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<byte> line)
-    {
-        using UMList<byte> sb = new(128);
-        var endIndex = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (!line[i].IsLetterOrDigit() && line[i] != '_')
-            {
-                endIndex = i - 1;
-                break;
-            }
-            sb.Add(line[i]);
-        }
-        return (new EntityToken(Encoding.ASCII.GetString(sb.AsReadOnlySpan())), endIndex);
-    }
-
-    private static MList<IStepToken> TokenizeLine(ReadOnlySpan<byte> line)
-    {
-        var tokens = new MList<IStepToken>(64);
-        for (int i = 0; i < line.Length; i++)
-        {
-            var c = line[i];
-            switch (c)
-            {
-                case (byte)' ':
-                    break;
-                case (byte)'#':
-                    {
-                        var (token, endIndex) = GetLineNumber(line[(i + 1)..]);
-                        tokens.Add(token);
-                        i += endIndex;
-                        break;
-                    }
-                case (byte)'=':
-                    tokens.Add(new EqualToken());
-                    break;
-                case (byte)'(':
-                    tokens.Add(new LeftBracketToken());
-                    break;
-                case (byte)')':
-                    tokens.Add(new RightBracketToken());
-                    break;
-                case (byte)',':
-                    tokens.Add(new CommaToken());
-                    break;
-                case (byte)';':
-                    tokens.Add(new SemicolonToken());
-                    break;
-                case (byte)'*':
-                    tokens.Add(new AsteriskToken());
-                    break;
-                case (byte)'$':
-                    tokens.Add(new DollarToken());
-                    break;
-                case (byte)'.':
-                    {
-                        var (token, endIndex) = GetEnumToken(line[(i + 1)..]);
-                        tokens.Add(token);
-                        i += endIndex;
-                        break;
-                    }
-                case (byte)'\'':
-                    {
-                        var (token, endIndex) = GetStringToken(line[(i + 1)..]);
-                        tokens.Add(token);
-                        i += endIndex;
-                        break;
-                    }
-                default:
-                    if (c.IsDigit() || c == '+' || c == '-')
-                    {
-                        var (token, endIndex) = GetNumberToken(line[i..]);
-                        tokens.Add(token);
-                        i += endIndex;
-                    }
-                    else if (c.IsLetter())
-                    {
-                        var (token, endIndex) = GetEntityToken(line[i..]);
-                        tokens.Add(token);
-                        i += endIndex;
-                    }
-                    break;
-            }
-        }
-        return tokens;
-    }
-
-    private static List<MList<IStepToken>> TokenizeSync(string stepFile)
-    {
-        var stopWatch = Stopwatch.StartNew();
-        using var reader = new FileStream(stepFile, FileMode.Open, FileAccess.Read);
-        SkipHeader(reader);
-        var tokens = new List<MList<IStepToken>>();
-        using UMList<byte> sb = new(2048);
-        int buffer = 0;
-        while ((buffer = reader.ReadByte()) != -1)
-        {
-            if (buffer == '\r')
-            {
-                continue;
-            }
-            if (buffer == '\n')
-            {
-                continue;
-            }
-            sb.Add((byte)buffer);
-            if (buffer == ';')
-            {
-                var line = sb.AsReadOnlySpan();
-                if (line.Length == 0 || line[0] != '#')
-                {
-                    sb.Clear();
-                    continue;
-                }
-                var lineTokens = TokenizeLine(line);
-                sb.Clear();
-                tokens.Add(lineTokens);
-            }
-        }
-        stopWatch.Stop();
-        Console.WriteLine($"Synchronous tokenization completed in {stopWatch.ElapsedMilliseconds} ms, total lines: {tokens.Count}");
-        return tokens;
-    }
 
 
     // private static ConcurrentBag<MList<IStepToken>> Tokenize(string stepFile)

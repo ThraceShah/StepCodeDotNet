@@ -3,12 +3,11 @@ using System.Runtime.InteropServices;
 
 namespace StepCodeDotNet.Base;
 
-internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
+internal unsafe ref struct UMList<T>(int capacity) where T : unmanaged
 {
-    private T* _data = (T*)NativeMemory.Alloc((uint)(capacity * sizeof(T)));
     private int _count = 0;
     private int _capacity = capacity;
-    private bool _isDisposed = false;
+    private T* _data = (T*)NativeMemory.Alloc((uint)(capacity * sizeof(T)));
 
     public ref T this[int index]
     {
@@ -187,34 +186,12 @@ internal unsafe class UMList<T>(int capacity) : IDisposable where T : unmanaged
         return new Enumerator(_data, _count);
     }
 
-    protected virtual void Dispose(bool disposing)
+    public void Dispose()
     {
-        if (_isDisposed)
-            return;
-
-        if (disposing)
-        {
-            // Free managed resources
-        }
-
-        // Free unmanaged resources
         NativeMemory.Free(_data);
         _data = null;
         _count = 0;
         _capacity = 0;
-
-        _isDisposed = true;
-    }
-
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
-    ~UMList()
-    {
-        Dispose(false);
     }
 
     public ref struct Enumerator(T* data, int count)
@@ -252,6 +229,8 @@ internal ref struct UMSpanList<T>(Span<T> buffer) where T : unmanaged
     }
 
     public readonly int Count => _count;
+
+    public readonly int Capacity => _buffer.Length;
 
     public void Add(T item)
     {
