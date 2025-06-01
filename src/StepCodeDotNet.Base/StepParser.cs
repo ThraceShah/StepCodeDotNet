@@ -8,20 +8,20 @@ using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 public interface IStepToken;
-public record LineNumberToken(int LineNumber) : IStepToken;
-public record EqualToken : IStepToken;
+public record struct LineNumberToken(int LineNumber) : IStepToken;
+public record struct EqualToken : IStepToken;
 public record EntityToken(string EntityName) : IStepToken;
-public record LeftBracketToken : IStepToken;
-public record RightBracketToken : IStepToken;
-public record CommaToken : IStepToken;
-public record IntegerToken(int Value) : IStepToken;
-public record RealToken(double Value) : IStepToken;
+public record struct LeftBracketToken : IStepToken;
+public record struct RightBracketToken : IStepToken;
+public record struct CommaToken : IStepToken;
+public record struct IntegerToken(int Value) : IStepToken;
+public record struct RealToken(double Value) : IStepToken;
 public record StringToken(string Value) : IStepToken;
 public record EnumToken(string Value) : IStepToken;
-public record SemicolonToken : IStepToken;
-public record AsteriskToken : IStepToken;
-public record BooleanToken(bool Value) : IStepToken;
-public record DollarToken : IStepToken;
+public record struct SemicolonToken : IStepToken;
+public record struct AsteriskToken : IStepToken;
+public record struct BooleanToken(bool Value) : IStepToken;
+public record struct DollarToken : IStepToken;
 
 public interface IExpress;
 public interface IExpress<T> : IExpress
@@ -409,16 +409,42 @@ public partial class StepParser(IStepObjCreator creater)
 
     private static (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<byte> line)
     {
-        var number = NumberRegex().Match(Encoding.ASCII.GetString(line));
-        var str = number.Value;
-        if (str.Contains('.'))
+        int endIndex = 1;
+        byte b;
+        bool isReal = false;
+        while (endIndex < line.Length)
         {
-            return (new RealToken(double.Parse(str)), str.Length - 1);
+            b = line[endIndex];
+            if (b.IsDigit())
+            {
+                endIndex++;
+                continue;
+            }
+            if (b == '.')
+            {
+                endIndex++;
+                isReal = true;
+                continue;
+            }
+            if (b == 'e' || b == 'E' || b == '-' || b == '+')
+            {
+                endIndex++;
+            }
+            else
+            {
+                break;
+            }
+        }
+        var str = line[..endIndex];
+        if (isReal)
+        {
+            return (new RealToken(double.Parse(str)), endIndex - 1);
         }
         else
         {
-            return (new IntegerToken(int.Parse(str)), str.Length - 1);
+            return (new IntegerToken(int.Parse(str)), endIndex - 1);
         }
+
     }
 
     private static (EntityToken token, int endIndex) GetEntityToken(ReadOnlySpan<byte> line)
@@ -529,12 +555,6 @@ public partial class StepParser(IStepObjCreator creater)
             sb.Add((byte)buffer);
             if (buffer == ';')
             {
-                // var line = _gb18030.GetString(sb.AsReadOnlySpan());
-                // sb.Clear();
-                // if (line.StartsWith("ENDSEC;"))
-                // {
-                //     break;
-                // }
                 var line = sb.AsReadOnlySpan();
                 if (line.Length == 0 || line[0] != '#')
                 {
