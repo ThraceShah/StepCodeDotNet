@@ -5,10 +5,61 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</RuntimeIdentifier>
   </PropertyGroup>
-  <ItemGroup>
-      <None Include="../../third_party/*.dll">
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </None>
+
+  <PropertyGroup
+    Condition=" '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('win')) ">
+    <DefineConstants>WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup
+    Condition=" '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('osx')) ">
+    <DefineConstants>OSX;UNIX</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup
+    Condition=" '$(RuntimeIdentifier)' != '' and $(RuntimeIdentifier.StartsWith('linux')) ">
+    <DefineConstants>LINUX;UNIX</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Windows x64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <None Include="../../third_party/win-x64/*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Windows arm64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-arm64'">
+    <None Include="../../third_party/win-arm64/*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- macOS x64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-x64'">
+    <None Include="../../third_party/osx-x64/*.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- macOS arm64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">
+    <None Include="../../third_party/osx-arm64/*.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Linux x64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <None Include="../../third_party/linux-x64/*.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Linux arm64 -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-arm64'">
+    <None Include="../../third_party/linux-arm64/*.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

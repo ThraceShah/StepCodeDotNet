@@ -70,7 +70,16 @@ public static unsafe partial class IExpress
 
     static IExpress()
     {
-        ExpressHandle = NativeLibrary.Load("express");
+#if WINDOWS
+        var expressFile = Path.Combine(AppContext.BaseDirectory, "express.dll");
+        ExpressHandle = NativeLibrary.Load(expressFile);
+#elif OSX
+        var expressFile = Path.Combine(AppContext.BaseDirectory, "libexpress.dylib");
+#elif LINUX
+        var expressFile = Path.Combine(AppContext.BaseDirectory, "libexpress.so");
+#endif
+        ExpressHandle = NativeLibrary.Load(expressFile);
+
         __ERROR_buffer_errors = (sbyte*)NativeLibrary.GetExport(ExpressHandle, "__ERROR_buffer_errors");
         __SCAN_buffers = (Scan_Buffer*)NativeLibrary.GetExport(ExpressHandle, "SCAN_buffers");
         __SCAN_current_buffer = (int*)NativeLibrary.GetExport(ExpressHandle, "SCAN_current_buffer");
