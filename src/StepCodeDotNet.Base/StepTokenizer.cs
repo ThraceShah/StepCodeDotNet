@@ -152,7 +152,7 @@ internal readonly ref struct StepTokenizeResult(UMSpanList<IStepToken> tokens, U
 public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
 {
     private readonly byte* _ptr = (byte*)NativeMemory.Alloc((nuint)capacity);
-    private int _used = 0;
+    private Int64 _used = 0;
 
     public T* Rent<T>(T value) where T : unmanaged
     {
@@ -211,6 +211,8 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         return new IStepToken(ptr);
     }
 
+    public readonly Int64 RemainingCapacity => capacity - _used;
+
     public void Dispose()
     {
         NativeMemory.Free(_ptr);
@@ -219,12 +221,12 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
 
 }
 
-public unsafe readonly ref struct StepTokenizer
+public unsafe ref struct StepTokenizer
 {
     static readonly byte[] _dataStart = Encoding.ASCII.GetBytes("DATA;");
     readonly int _fileSize;
     readonly string _stepFile;
-    readonly StepTokensMemoryPool _memoryPool;
+    StepTokensMemoryPool _memoryPool;
     public StepTokenizer(string stepFile)
     {
         _stepFile = stepFile;
@@ -234,7 +236,27 @@ public unsafe readonly ref struct StepTokenizer
             throw new ArgumentException("The STEP file is too large to process.");
         }
         _fileSize = (int)fileInfo.Length;
-        _memoryPool = new StepTokensMemoryPool(_fileSize * 6); // Allocate double the file size for tokens
+        long preAllocatedSize = fileInfo.Length * 8;
+        PrintPreallocatedMemoryInfo(preAllocatedSize);
+        _memoryPool = new StepTokensMemoryPool(preAllocatedSize); // Allocate double the file size for tokens
+    }
+
+    private static void PrintPreallocatedMemoryInfo(long preAllocatedSize)
+    {
+        const int MB = 1024 * 1024;
+        const int KB = 1024;
+        if (preAllocatedSize >= MB)
+        {
+            Console.WriteLine($"Pre-allocated memory pool size: {preAllocatedSize / MB} MB");
+        }
+        else if (preAllocatedSize >= KB)
+        {
+            Console.WriteLine($"Pre-allocated memory pool size: {preAllocatedSize / KB} KB");
+        }
+        else
+        {
+            Console.WriteLine($"Pre-allocated memory pool size: {preAllocatedSize} B");
+        }
     }
 
     private static void SkipHeader(FileStream reader)
@@ -303,7 +325,7 @@ public unsafe readonly ref struct StepTokenizer
                 return (_memoryPool.RentToken(new BooleanToken(false)), endIndex);
             }
         }
-        return (_memoryPool.RentEnumToken(sb.AsReadOnlySpan()), endIndex);
+        return (_memoryPool.RentEnumToken(sb), endIndex);
     }
 
     private (IStepToken token, int endIndex) GetStringToken(ReadOnlySpan<byte> line)
@@ -319,7 +341,7 @@ public unsafe readonly ref struct StepTokenizer
             }
             sb.Add(line[i]);
         }
-        return (_memoryPool.RentStringToken(sb.AsReadOnlySpan()), endIndex);
+        return (_memoryPool.RentStringToken(sb), endIndex);
     }
 
     private (IStepToken token, int endIndex) GetNumberToken(ReadOnlySpan<byte> line)
@@ -375,7 +397,7 @@ public unsafe readonly ref struct StepTokenizer
             }
             sb.Add(line[i]);
         }
-        return (_memoryPool.RentEntityToken(sb.AsReadOnlySpan()), endIndex);
+        return (_memoryPool.RentEntityToken(sb), endIndex);
     }
 
     private void TokenizeLine(ReadOnlySpan<byte> line, ref UMSpanList<IStepToken> tokens)
@@ -450,7 +472,6 @@ public unsafe readonly ref struct StepTokenizer
 
     internal StepTokenizeResult TokenizeSync()
     {
-        var stopWatch = Stopwatch.StartNew();
         using var reader = new FileStream(_stepFile, FileMode.Open, FileAccess.Read);
         SkipHeader(reader);
         var preTokenCount = _fileSize / 2;
@@ -477,15 +498,14 @@ public unsafe readonly ref struct StepTokenizer
                     sb.Clear();
                     continue;
                 }
-                TokenizeLine(line, ref tokens);
+                TokenizeLine(sb, ref tokens);
                 sb.Clear();
                 lines.Add(tokens.Count);
             }
         }
         lines.Add(tokens.Count); // Add the last line if it exists
-        stopWatch.Stop();
         var result = new StepTokenizeResult(tokens, lines);
-        Console.WriteLine($"Synchronous tokenization completed in {stopWatch.ElapsedMilliseconds} ms, total lines: {lines.Count - 1}");
+        Console.WriteLine($"remaining capacity in memory pool: {_memoryPool.RemainingCapacity / 1024 / 1024} MB");
         return result;
     }
 

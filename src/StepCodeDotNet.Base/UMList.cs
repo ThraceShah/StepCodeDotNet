@@ -18,7 +18,7 @@ internal unsafe ref struct UMList<T>(int capacity) where T : unmanaged
         }
     }
 
-    public Span<T> this[Range range]
+    public readonly Span<T> this[Range range]
     {
         get
         {
@@ -28,11 +28,11 @@ internal unsafe ref struct UMList<T>(int capacity) where T : unmanaged
     }
 
 
-    public int Count => _count;
+    public readonly int Count => _count;
 
-    public int Capacity => _capacity;
+    public readonly int Capacity => _capacity;
 
-    public T* Data => _data;
+    public readonly T* Data => _data;
 
     public UMList() : this(4)
     {
@@ -120,17 +120,17 @@ internal unsafe ref struct UMList<T>(int capacity) where T : unmanaged
         return ref _data[index];
     }
 
-    public ReadOnlySpan<T> AsReadOnlySpan()
+    public readonly ReadOnlySpan<T> AsReadOnlySpan()
     {
         return new ReadOnlySpan<T>(_data, _count);
     }
 
-    public Span<T> AsSpan()
+    public readonly Span<T> AsSpan()
     {
         return new Span<T>(_data, _count);
     }
 
-    public Span<T> Slice(int start, int length)
+    public readonly Span<T> Slice(int start, int length)
     {
         return new Span<T>(_data + start, length);
     }
@@ -181,7 +181,7 @@ internal unsafe ref struct UMList<T>(int capacity) where T : unmanaged
     }
 
 
-    public Enumerator GetEnumerator()
+    public readonly Enumerator GetEnumerator()
     {
         return new Enumerator(_data, _count);
     }
@@ -250,6 +250,27 @@ internal ref struct UMSpanList<T>(Span<T> buffer) where T : unmanaged
     public readonly Span<T> AsSpan()
     {
         return _buffer[.._count];
+    }
+
+    public readonly T[] ToArray()
+    {
+        return _buffer[.._count].ToArray();
+    }
+
+
+    public static implicit operator Span<T>(UMSpanList<T> list)
+    {
+        return list.AsSpan();
+    }
+
+    public static implicit operator ReadOnlySpan<T>(UMSpanList<T> list)
+    {
+        return list.AsReadOnlySpan();
+    }
+
+    public static implicit operator T[](UMSpanList<T> list)
+    {
+        return list.ToArray();
     }
 
 }
