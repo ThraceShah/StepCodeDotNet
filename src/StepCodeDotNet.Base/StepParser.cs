@@ -40,262 +40,263 @@ public unsafe partial class StepParser(IStepObjCreator creater)
         using var tokenizer = new StepTokenizer(stepPath);
         var tokenLists = tokenizer.TokenizeSync();
 
-        //        var stopWatch = Stopwatch.StartNew();
-        //#if DEBUG
-        //        // PrintTokens(tokenLists);
-        //#endif
-        //        stopWatch.Restart();
-        //        var expressList = new List<LineExpress>();
-        //        foreach (var lineTokens in tokenLists)
-        //        {
-        //            var lineExpress = ResolveLine(lineTokens);
-        //            expressList.Add(lineExpress);
-        //        }
+        var stopWatch = Stopwatch.StartNew();
+#if DEBUG
+        PrintTokens(tokenLists);
+#endif
+        // stopWatch.Restart();
+        // var expressList = new List<LineExpress>();
+        // foreach (var lineTokens in tokenLists)
+        // {
+        //     var lineExpress = ResolveLine(lineTokens);
+        //     expressList.Add(lineExpress);
+        // }
 
-        //        stopWatch.Stop();
-        //        Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+        // stopWatch.Stop();
+        // Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
 
-        //        stopWatch.Restart();
-        //        var stepObjs = creater.CreateStepObjs(expressList);
-        //        stopWatch.Stop();
-        //        Console.WriteLine($"Object creation took: {stopWatch.ElapsedMilliseconds} ms");
-        //        return stepObjs;
+        // stopWatch.Restart();
+        // var stepObjs = creater.CreateStepObjs(expressList);
+        // stopWatch.Stop();
+        // Console.WriteLine($"Object creation took: {stopWatch.ElapsedMilliseconds} ms");
+        // return stepObjs;
 
         return [];
     }
-    /*
-    private static (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
+
+    // private static (ListExpress, int) ResolveList(ReadOnlySpan<IStepToken> listTokens)
+    // {
+    //     var result = new List<IExpress>();
+    //     for (int i = 0; i < listTokens.Length; i++)
+    //     {
+    //         switch (listTokens[i])
+    //         {
+    //             case IntegerToken integer:
+    //                 result.Add(new IntegerExpress(integer.Value));
+    //                 break;
+    //             case RealToken real:
+    //                 result.Add(new RealExpress(real.Value));
+    //                 break;
+    //             case StringToken str:
+    //                 result.Add(new StringExpress(str.Value));
+    //                 break;
+    //             case EnumToken enumToken:
+    //                 result.Add(new EnumExpress(enumToken.Value));
+    //                 break;
+    //             case BooleanToken boolean:
+    //                 result.Add(new BooleanExpress(boolean.Value));
+    //                 break;
+    //             case AsteriskToken:
+    //                 result.Add(new AsteriskExpress());
+    //                 break;
+    //             case LineNumberToken lineNumber:
+    //                 result.Add(new RefExpress(lineNumber.LineNumber));
+    //                 break;
+    //             case DollarToken:
+    //                 result.Add(new DollarExpress());
+    //                 break;
+    //             case EntityToken:
+    //                 {
+    //                     var (entityExpress, endIndex) = ResolveEntity(listTokens[i..]);
+    //                     result.Add(entityExpress);
+    //                     i += endIndex;
+    //                     break;
+    //                 }
+    //             case LeftBracketToken:
+    //                 {
+    //                     var startIndex = i + 1;
+    //                     var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
+    //                     result.Add(listExpress);
+    //                     i += endIndex + 1;
+    //                     break;
+    //                 }
+    //             case RightBracketToken:
+    //                 return (new ListExpress(result), i);
+    //             default:
+    //                 break;
+    //         }
+    //     }
+    //     return (new ListExpress(result), 0);
+    // }
+
+    // private static ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
+    // {
+    //     var result = new List<EntityExpress>();
+    //     for (int i = 0; i < listTokens.Length; i++)
+    //     {
+    //         switch (listTokens[i])
+    //         {
+    //             case EntityToken:
+    //                 {
+    //                     var (entityExpress, endIndex) = ResolveEntity(listTokens[i..]);
+    //                     result.Add(entityExpress);
+    //                     i += endIndex;
+    //                     break;
+    //                 }
+    //             case LeftBracketToken:
+    //                 {
+    //                     var startIndex = i + 1;
+    //                     var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
+    //                     result.AddRange(listExpress.ExpressList.Select(x => (EntityExpress)x));
+    //                     i += endIndex + 1;
+    //                     break;
+    //                 }
+    //             case RightBracketToken:
+    //                 return new ComplexExpress(result);
+    //             default:
+    //                 break;
+    //         }
+    //     }
+    //     return new ComplexExpress(result);
+    // }
+
+
+    // private static (EntityExpress, int) ResolveEntity(ReadOnlySpan<IStepToken> entityTokens)
+    // {
+    //     if (entityTokens.Length < 3)
+    //     {
+    //         throw new Exception("Invalid entity");
+    //     }
+    //     if (entityTokens[0] is not EntityToken entity)
+    //     {
+    //         throw new Exception("Invalid entity");
+    //     }
+    //     if (entityTokens[1] is not LeftBracketToken)
+    //     {
+    //         throw new Exception("Invalid entity");
+    //     }
+    //     var entityName = entity.EntityName;
+    //     var args = new List<IExpress>();
+    //     for (int i = 2; i < entityTokens.Length; i++)
+    //     {
+    //         switch (entityTokens[i])
+    //         {
+    //             case IntegerToken integer:
+    //                 args.Add(new IntegerExpress(integer.Value));
+    //                 break;
+    //             case RealToken real:
+    //                 args.Add(new RealExpress(real.Value));
+    //                 break;
+    //             case StringToken str:
+    //                 args.Add(new StringExpress(str.Value));
+    //                 break;
+    //             case EnumToken enumToken:
+    //                 args.Add(new EnumExpress(enumToken.Value));
+    //                 break;
+    //             case BooleanToken boolean:
+    //                 args.Add(new BooleanExpress(boolean.Value));
+    //                 break;
+    //             case AsteriskToken:
+    //                 args.Add(new AsteriskExpress());
+    //                 break;
+    //             case DollarToken:
+    //                 args.Add(new DollarExpress());
+    //                 break;
+    //             case LineNumberToken lineNumber:
+    //                 args.Add(new RefExpress(lineNumber.LineNumber));
+    //                 break;
+    //             case EntityToken:
+    //                 {
+    //                     var (entityExpress, endIndex) = ResolveEntity(entityTokens[i..]);
+    //                     args.Add(entityExpress);
+    //                     i += endIndex;
+    //                     break;
+    //                 }
+    //             case LeftBracketToken:
+    //                 {
+    //                     var startIndex = i + 1;
+    //                     var (listExpress, endIndex) = ResolveList(entityTokens[startIndex..]);
+    //                     args.Add(listExpress);
+    //                     i += endIndex + 1;
+    //                     break;
+    //                 }
+    //             case RightBracketToken:
+    //                 return (new EntityExpress(entityName, args), i);
+    //             default:
+    //                 break;
+    //         }
+    //     }
+    //     return (new EntityExpress(entityName, args), 0);
+    // }
+
+    // private static LineExpress ResolveLine(ReadOnlySpan<IStepToken> lineTokens)
+    // {
+    //     if (lineTokens.Length < 3)
+    //     {
+    //         throw new Exception("Invalid line");
+    //     }
+    //     if (lineTokens[0] is not LineNumberToken lineNumber)
+    //     {
+    //         throw new Exception("Invalid line number");
+    //     }
+    //     var lineNumberValue = lineNumber.LineNumber;
+    //     if (lineTokens[1] is not EqualToken)
+    //     {
+    //         throw new Exception("Invalid entity");
+    //     }
+    //     switch (lineTokens[2])
+    //     {
+    //         case EntityToken:
+    //             var (entityExpress, _) = ResolveEntity(lineTokens[2..]);
+    //             return new LineExpress(lineNumberValue, entityExpress);
+    //         case LeftBracketToken:
+    //             var complexExpress = ResolveComplex(lineTokens[3..]);
+    //             return new LineExpress(lineNumberValue, complexExpress);
+    //         default:
+    //             throw new Exception("Invalid entity");
+    //     }
+    // }
+
+    private static void PrintTokens(StepTokenizeResult tokens)
     {
-        var result = new List<IExpress>();
-        for (int i = 0; i < listTokens.Length; i++)
+        int lineStart = 0;
+        foreach (var lineEnd in tokens.Lines.AsSpan())
         {
-            switch (listTokens[i])
+            foreach (var token in tokens.Tokens[lineStart..lineEnd])
             {
-                case IntegerToken integer:
-                    result.Add(new IntegerExpress(integer.Value));
-                    break;
-                case RealToken real:
-                    result.Add(new RealExpress(real.Value));
-                    break;
-                case StringToken str:
-                    result.Add(new StringExpress(str.Value));
-                    break;
-                case EnumToken enumToken:
-                    result.Add(new EnumExpress(enumToken.Value));
-                    break;
-                case BooleanToken boolean:
-                    result.Add(new BooleanExpress(boolean.Value));
-                    break;
-                case AsteriskToken:
-                    result.Add(new AsteriskExpress());
-                    break;
-                case LineNumberToken lineNumber:
-                    result.Add(new RefExpress(lineNumber.LineNumber));
-                    break;
-                case DollarToken:
-                    result.Add(new DollarExpress());
-                    break;
-                case EntityToken:
-                    {
-                        var (entityExpress, endIndex) = ResolveEntity(listTokens[i..]);
-                        result.Add(entityExpress);
-                        i += endIndex;
-                        break;
-                    }
-                case LeftBracketToken:
-                    {
-                        var startIndex = i + 1;
-                        var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
-                        result.Add(listExpress);
-                        i += endIndex + 1;
-                        break;
-                    }
-                case RightBracketToken:
-                    return (new ListExpress(result), i);
-                default:
-                    break;
-            }
-        }
-        return (new ListExpress(result), 0);
-    }
-
-    private static ComplexExpress ResolveComplex(ReadOnlySpan<IStepToken> listTokens)
-    {
-        var result = new List<EntityExpress>();
-        for (int i = 0; i < listTokens.Length; i++)
-        {
-            switch (listTokens[i])
-            {
-                case EntityToken:
-                    {
-                        var (entityExpress, endIndex) = ResolveEntity(listTokens[i..]);
-                        result.Add(entityExpress);
-                        i += endIndex;
-                        break;
-                    }
-                case LeftBracketToken:
-                    {
-                        var startIndex = i + 1;
-                        var (listExpress, endIndex) = ResolveList(listTokens[startIndex..]);
-                        result.AddRange(listExpress.ExpressList.Select(x => (EntityExpress)x));
-                        i += endIndex + 1;
-                        break;
-                    }
-                case RightBracketToken:
-                    return new ComplexExpress(result);
-                default:
-                    break;
-            }
-        }
-        return new ComplexExpress(result);
-    }
-
-
-    private static (EntityExpress, int) ResolveEntity(ReadOnlySpan<IStepToken> entityTokens)
-    {
-        if (entityTokens.Length < 3)
-        {
-            throw new Exception("Invalid entity");
-        }
-        if (entityTokens[0] is not EntityToken entity)
-        {
-            throw new Exception("Invalid entity");
-        }
-        if (entityTokens[1] is not LeftBracketToken)
-        {
-            throw new Exception("Invalid entity");
-        }
-        var entityName = entity.EntityName;
-        var args = new List<IExpress>();
-        for (int i = 2; i < entityTokens.Length; i++)
-        {
-            switch (entityTokens[i])
-            {
-                case IntegerToken integer:
-                    args.Add(new IntegerExpress(integer.Value));
-                    break;
-                case RealToken real:
-                    args.Add(new RealExpress(real.Value));
-                    break;
-                case StringToken str:
-                    args.Add(new StringExpress(str.Value));
-                    break;
-                case EnumToken enumToken:
-                    args.Add(new EnumExpress(enumToken.Value));
-                    break;
-                case BooleanToken boolean:
-                    args.Add(new BooleanExpress(boolean.Value));
-                    break;
-                case AsteriskToken:
-                    args.Add(new AsteriskExpress());
-                    break;
-                case DollarToken:
-                    args.Add(new DollarExpress());
-                    break;
-                case LineNumberToken lineNumber:
-                    args.Add(new RefExpress(lineNumber.LineNumber));
-                    break;
-                case EntityToken:
-                    {
-                        var (entityExpress, endIndex) = ResolveEntity(entityTokens[i..]);
-                        args.Add(entityExpress);
-                        i += endIndex;
-                        break;
-                    }
-                case LeftBracketToken:
-                    {
-                        var startIndex = i + 1;
-                        var (listExpress, endIndex) = ResolveList(entityTokens[startIndex..]);
-                        args.Add(listExpress);
-                        i += endIndex + 1;
-                        break;
-                    }
-                case RightBracketToken:
-                    return (new EntityExpress(entityName, args), i);
-                default:
-                    break;
-            }
-        }
-        return (new EntityExpress(entityName, args), 0);
-    }
-
-    private static LineExpress ResolveLine(ReadOnlySpan<IStepToken> lineTokens)
-    {
-        if (lineTokens.Length < 3)
-        {
-            throw new Exception("Invalid line");
-        }
-        if (lineTokens[0] is not LineNumberToken lineNumber)
-        {
-            throw new Exception("Invalid line number");
-        }
-        var lineNumberValue = lineNumber.LineNumber;
-        if (lineTokens[1] is not EqualToken)
-        {
-            throw new Exception("Invalid entity");
-        }
-        switch (lineTokens[2])
-        {
-            case EntityToken:
-                var (entityExpress, _) = ResolveEntity(lineTokens[2..]);
-                return new LineExpress(lineNumberValue, entityExpress);
-            case LeftBracketToken:
-                var complexExpress = ResolveComplex(lineTokens[3..]);
-                return new LineExpress(lineNumberValue, complexExpress);
-            default:
-                throw new Exception("Invalid entity");
-        }
-    }
-
-    private static void PrintTokens(List<MList<IStepToken>> tokens)
-    {
-        foreach (var lineTokens in tokens)
-        {
-            foreach (var token in lineTokens)
-            {
-                switch (token)
+                switch (token.TokenType)
                 {
-                    case LineNumberToken lineNumber:
-                        Console.Write($"#{lineNumber.LineNumber}");
+                    case StepTokenType.LineNumber:
+                        Console.Write($"#{token.As<LineNumberToken>().LineNumber}");
                         break;
-                    case EqualToken:
+                    case StepTokenType.Equal:
                         Console.Write("=");
                         break;
-                    case EntityToken entity:
-                        Console.Write(entity.EntityName);
+                    case StepTokenType.Entity:
+                        Console.Write(Encoding.ASCII.GetString(token.As<EntityToken>().EntityName));
                         break;
-                    case LeftBracketToken:
+                    case StepTokenType.LeftBracket:
                         Console.Write("(");
                         break;
-                    case RightBracketToken:
+                    case StepTokenType.RightBracket:
                         Console.Write(")");
                         break;
-                    case CommaToken:
+                    case StepTokenType.Comma:
                         Console.Write(",");
                         break;
-                    case IntegerToken integer:
-                        Console.Write(integer.Value);
+                    case StepTokenType.Integer:
+                        Console.Write(token.As<IntegerToken>().Value);
                         break;
-                    case RealToken real:
-                        Console.Write(real.Value);
+                    case StepTokenType.Real:
+                        Console.Write(token.As<RealToken>().Value);
                         break;
-                    case StringToken str:
-                        Console.Write($"'{str.Value}'");
+                    case StepTokenType.String:
+                        Console.Write($"'{_gb18030.GetString(token.As<StringToken>().Value)}'");
                         break;
-                    case EnumToken enumToken:
-                        Console.Write($".{enumToken.Value}.");
+                    case StepTokenType.Enum:
+                        Console.Write($".{Encoding.ASCII.GetString(token.As<EnumToken>().Value)}.");
                         break;
-                    case SemicolonToken:
+                    case StepTokenType.Semicolon:
                         Console.WriteLine(";");
                         break;
-                    case AsteriskToken:
+                    case StepTokenType.Asterisk:
                         Console.Write("*");
                         break;
-                    case DollarToken:
+                    case StepTokenType.Dollar:
                         Console.Write("$");
                         break;
-                    case BooleanToken boolean:
-                        if (boolean.Value)
+                    case StepTokenType.Boolean:
+                        if (token.As<BooleanToken>().Value)
                         {
                             Console.Write(".T.");
                         }
@@ -306,9 +307,10 @@ public unsafe partial class StepParser(IStepObjCreator creater)
                         break;
                 }
             }
+            lineStart = lineEnd;
         }
     }
-    */
+
 
 
 

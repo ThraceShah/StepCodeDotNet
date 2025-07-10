@@ -228,6 +228,15 @@ internal ref struct UMSpanList<T>(Span<T> buffer) where T : unmanaged
         get => ref _buffer[index];
     }
 
+    public readonly Span<T> this[Range range]
+    {
+        get
+        {
+            var (start, length) = range.GetOffsetAndLength(_count);
+            return _buffer.Slice(start, length);
+        }
+    }
+
     public readonly int Count => _count;
 
     public readonly int Capacity => _buffer.Length;

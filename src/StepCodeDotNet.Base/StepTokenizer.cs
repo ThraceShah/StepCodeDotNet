@@ -114,6 +114,7 @@ public readonly unsafe struct EnumToken
     public readonly StepTokenType TokenType = StepTokenType.Enum;
     public readonly byte* Ptr;
     public readonly int Length;
+    public readonly ReadOnlySpan<byte> Value => new(Ptr, Length);
     public EnumToken(byte* ptr, int length)
     {
         Ptr = ptr;
