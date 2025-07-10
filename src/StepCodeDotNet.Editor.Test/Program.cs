@@ -2,7 +2,18 @@
 using System.Diagnostics;
 using StepCodeDotNet.Base;
 
-var stepFile = @"D:\model\protofiles\大模型\m1250960-001_asm_20230327.stp";
+var zipFile = Path.Combine(AppContext.BaseDirectory, "step_file.zip");
+var stepFile = Path.Combine(AppContext.BaseDirectory, "step_file.stp");
+if (File.Exists(stepFile) is false)
+{
+    // Unzip the file
+    System.IO.Compression.ZipFile.ExtractToDirectory(zipFile, AppContext.BaseDirectory, true);
+}
+if (!File.Exists(stepFile))
+{
+    Console.WriteLine($"Step file not found: {stepFile}");
+    return;
+}
 var creator = StepCodeDotNet.Gen.config_control_design.StepObjCreator.Instance;
 var parser = new StepCodeDotNet.Base.StepParser(creator);
 var watch = new Stopwatch();
@@ -11,3 +22,5 @@ var results = parser.Resolve(stepFile);
 watch.Stop();
 Console.WriteLine($"Parsing took {watch.ElapsedMilliseconds} ms");
 Console.WriteLine(results.Length);
+var memoryUsed = StepCodeDotNet.Base.StepParser.GetMemoryUsedMB();
+Console.WriteLine($"After parser all Memory used: {memoryUsed} MB");
