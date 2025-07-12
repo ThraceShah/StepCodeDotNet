@@ -8,25 +8,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-
-public interface IExpress;
-public interface IExpress<T> : IExpress
-{
-    T Value { get; }
-}
-public record StringExpress(string Value) : IExpress<string>;
-public record struct IntegerExpress(int Value) : IExpress<int>;
-public record struct RealExpress(double Value) : IExpress<double>;
-public record struct BooleanExpress(bool Value) : IExpress<bool>;
-public record EnumExpress(string Value) : IExpress<string>;
-public record EntityExpress(string EntityName, List<IExpress> Args) : IExpress;
-public record struct AsteriskExpress : IExpress;
-public record ListExpress(List<IExpress> ExpressList) : IExpress;
-public record ComplexExpress(List<EntityExpress> ExpressList) : IExpress;
-public record struct RefExpress(int RefLineNumber) : IExpress;
-public record LineExpress(int LineNumber, IExpress Body) : IExpress;
-public record struct DollarExpress : IExpress;
-
 public unsafe partial class StepParser(IStepObjCreator creater)
 {
     private static readonly Encoding _gb18030;
