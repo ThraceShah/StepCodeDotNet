@@ -3,19 +3,37 @@ namespace StepCodeDotNet.Base;
 using System.Collections.Frozen;
 using System.Text;
 
+
 public interface IStepObjCreator
 {
     public Encoding Encoding { get; }
 
-    public IStepBaseObj Create(ReadOnlySpan<byte> entityName, IStepToken express);
-    public IStepBaseObj Create(string entityName, IStepToken express);
-    public IStepBaseObj Create(EntityToken express);
+    public IStepBaseObj Create(ReadOnlySpan<byte> entityName)
+    {
+        Span<char> charName = stackalloc char[entityName.Length];
+        for (int i = 0; i < entityName.Length; i++)
+        {
+            charName[i] = (char)entityName[i];
+        }
+        return Create(charName);
+    }
+    public IStepBaseObj Create(ReadOnlySpan<char> entityName);
+    public IStepBaseObj Create(ReadOnlySpan<byte> entityName, ReadOnlySpan<IStepToken> argTokens)
+    {
+        Span<char> charName = stackalloc char[entityName.Length];
+        for (int i = 0; i < entityName.Length; i++)
+        {
+            charName[i] = (char)entityName[i];
+        }
+        return Create(charName, argTokens);
+    }
+    public IStepBaseObj Create(ReadOnlySpan<char> entityName, ReadOnlySpan<IStepToken> argTokens);
+    public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress);
+    public IStepObj CreateComplex(ReadOnlySpan<char> complexName);
 
     public Array CreateArray(string typeName, int size);
 
-    public IStepObj CreateComplex(string complexName);
-
-    public void InitStepObj(IStepObj obj, Dictionary<int, IStepObj> refMap);
+    public void InitStepObj(IStepObj obj, ReadOnlySpan<IStepToken> argTokens, Dictionary<int, IStepObj> refMap);
 
     public T GetEnum<T>(IStepToken express) where T : struct, Enum
     {
@@ -63,11 +81,6 @@ public interface IStepObjCreator
         };
     }
 
-    public byte[] GetBINARY(IStepToken express)
-    {
-        throw new NotImplementedException();
-    }
-
 
     public string GetSTRING(IStepToken express)
     {
@@ -85,32 +98,123 @@ public interface IStepObjCreator
         _ => true,
     };
 
-    public T GetEntity<T>(IStepToken express, Dictionary<int, IStepObj> refMap) where T : class
+    public static ReadOnlySpan<IStepToken> GetEntityArgs(ReadOnlySpan<IStepToken> express, out bool hasArgs, out int endIndex)
     {
-        if (express.TokenType == StepTokenType.Entity)
+        hasArgs = false;
+        endIndex = express.Length;
+        if (express.Length < 2)
         {
-            var r = Create(express.GetEntityName(), express);
-            if (r is IStepObj stepObj)
-            {
-                InitStepObj(stepObj, refMap);
-            }
-            return r as T;
+            return default;
         }
-        else if (express.TokenType == StepTokenType.LineNumber)
+        if (express[0].TokenType != StepTokenType.LeftBracket)
         {
-            if (refMap.TryGetValue(express.GetLineNumber(), out var stepObj))
+            return default;
+        }
+        int bracketLevel = 1;
+        endIndex = 1;
+        for (int i = 1; i < express.Length; i++)
+        {
+            var token = express[i];
+            if (token.TokenType == StepTokenType.LeftBracket)
             {
-                return stepObj as T;
+                bracketLevel++;
+            }
+            else if (token.TokenType == StepTokenType.RightBracket)
+            {
+                bracketLevel--;
+                if (bracketLevel == 0)
+                {
+                    endIndex = i + 1;
+                    hasArgs = true;
+                    return express[1..endIndex];
+                }
+            }
+            else if (token.TokenType == StepTokenType.Semicolon && bracketLevel == 1)
+            {
+                endIndex = i + 1;
+                hasArgs = true;
+                return express[1..endIndex];
             }
         }
-        return default;
+        if (bracketLevel > 1)
+        {
+            return default; // Unmatched brackets
+        }
+        // If we reach here, it means we have a complete argument list
+        endIndex = express.Length;
+        hasArgs = true;
+        return express[1..endIndex];
+
     }
 
-    public T GetBaseEntity<T>(IStepToken express, Dictionary<int, IStepObj> refMap) where T : unmanaged, IStepBaseObj => express.TokenType switch
+    public static ReadOnlySpan<IStepToken> GetListTokens(ReadOnlySpan<IStepToken> express, out bool valid, out int endIndex)
     {
-        StepTokenType.Entity => (T)Create(express.GetEntityName(), express),
-        _ => default,
-    };
+        return GetEntityArgs(express, out valid, out endIndex);
+    }
+
+
+    public (T, int) GetEntity<T>(ReadOnlySpan<IStepToken> express, Dictionary<int, IStepObj> refMap) where T : class
+    {
+        if (express.Length == 0)
+        {
+            return default;
+        }
+        var firstToken = express[0];
+        if (firstToken.TokenType == StepTokenType.Entity)
+        {
+            var remains = express[1..];
+            var args = GetEntityArgs(remains, out var hasArgs, out var endIndex);
+            IStepBaseObj r = null;
+            if (hasArgs)
+            {
+                r = Create(firstToken.GetEntityName(), args);
+            }
+            else
+            {
+                r = Create(firstToken.GetEntityName());
+            }
+            if (r is IStepObj stepObj)
+            {
+                if (hasArgs)
+                {
+                    InitStepObj(stepObj, args, refMap);
+                }
+            }
+            return ((T)r, endIndex);
+        }
+        else if (firstToken.TokenType == StepTokenType.LineNumber)
+        {
+            if (refMap.TryGetValue(firstToken.GetLineNumber(), out var stepObj))
+            {
+                return (stepObj as T, 1);
+            }
+        }
+        return (default, 1);
+    }
+
+    public (T, int) GetBaseEntity<T>(ReadOnlySpan<IStepToken> express, Dictionary<int, IStepObj> refMap) where T : unmanaged, IStepBaseObj
+    {
+        if (express.Length == 0)
+        {
+            return default;
+        }
+        var firstToken = express[0];
+        if (firstToken.TokenType == StepTokenType.Entity)
+        {
+            var args = GetEntityArgs(express[1..], out var hasArgs, out var endIndex);
+            IStepBaseObj r = null;
+            if (hasArgs)
+            {
+                r = Create(firstToken.GetEntityName(), args);
+            }
+            else
+            {
+                r = Create(firstToken.GetEntityName());
+            }
+            return ((T)r, endIndex);
+        }
+        return (default, 1);
+    }
 
     private static T[] GetRefAggregate<T>(ReadOnlySpan<IStepToken> express, Dictionary<int, IStepObj> refMap)
     {
@@ -178,24 +282,29 @@ public interface IStepObjCreator
             {
                 return GetRefAggregateObjs(express, refMap, typeName);
             }
-            var n = (express.Length + 1) / 2;
-            var result = CreateArray(typeName, n);
-            int i = 0;
-            foreach (var token in express)
+            else if (firstElement.TokenType == StepTokenType.Entity)
             {
-                if (token.TokenType != firstElement.TokenType)
-                {
-                    continue;
-                }
-                var r = Create(typeName, token);
-                if (r is IStepObj stepObj)
-                {
-                    InitStepObj(stepObj, refMap);
-                }
-                result.SetValue(r, i);
-                i++;
+                throw new NotSupportedException("Entity type not supported for list creation.");
             }
-            return result;
+            else
+            {
+                var n = (express.Length + 1) / 2;
+                var result = CreateArray(typeName, n);
+                int i = 0;
+                Span<IStepToken> argTokens = stackalloc IStepToken[1];
+                foreach (var token in express)
+                {
+                    if (token.TokenType != firstElement.TokenType)
+                    {
+                        continue;
+                    }
+                    argTokens[0] = token;
+                    var r = Create(typeName, argTokens);
+                    result.SetValue(r, i);
+                    i++;
+                }
+                return result;
+            }
         }
         var subArrays = new List<Array>();
         var subTokensStart = 0;
@@ -254,39 +363,53 @@ public interface IStepObjCreator
         {
             return [];
         }
-        var firstElement = express[0];
         if (typeof(T).IsArray)
         {
             var (depth, elementType) = GetArrayDepthAndElementType(typeof(T[]));
             return (T[])GetList(express, refMap, depth, elementType);
         }
-
+        var firstElement = express[0];
         if (firstElement.TokenType == StepTokenType.LineNumber)
         {
             return GetRefAggregate<T>(express, refMap);
         }
-        var typeName = typeof(T).Name.ToUpper();
-        var n = (express.Length + 1) / 2;
-        var result = new T[n];
-        int i = 0;
-        foreach (var token in express)
+        else if (firstElement.TokenType == StepTokenType.Entity)
         {
-            if (token.TokenType != firstElement.TokenType)
-            {
-                continue;
-            }
-            var r = Create(typeName, token);
-            if (r is IStepObj stepObj)
-            {
-                InitStepObj(stepObj, refMap);
-            }
-            result[i] = (T)r;
-            i++;
+            // var args = GetEntityArgs(express[1..], out var hasArgs, out var endIndex);
+            // if (hasArgs is false)
+            // {
+            //     return [];
+            // }
+            // var argsLength = endIndex - 1;
+            // var typeName = typeof(T).Name.ToUpper();
+            // var n = (express.Length + 1) / (argsLength + 1);
+            // int i = 0;
+            // Span<IStepToken> argTokens = stackalloc IStepToken[argsLength];
+            // for (int j = 0; i < express.Length; j += argsLength + 1)
+            // {
+            // }
+            throw new NotSupportedException("Entity type not supported for aggregate creation.");
         }
-        return result;
+        else
+        {
+            var typeName = typeof(T).Name.ToUpper();
+            var n = (express.Length + 1) / 2;
+            var result = new T[n];
+            int i = 0;
+            Span<IStepToken> argTokens = stackalloc IStepToken[1];
+            foreach (var token in express)
+            {
+                if (token.TokenType != firstElement.TokenType)
+                {
+                    continue;
+                }
+                argTokens[0] = token;
+                var r = Create(typeName, argTokens);
+                result[i] = (T)r;
+                i++;
+            }
+            return result;
+        }
     }
-
-
-    public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress);
 
 }

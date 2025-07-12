@@ -8,7 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
-public unsafe partial class StepParser(IStepObjCreator creater)
+public unsafe partial class StepParser(IStepObjCreator creator)
 {
     private static readonly Encoding _gb18030;
     static StepParser()
@@ -49,6 +49,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
         // PrintTokens(tokenLists);
 #endif
         CreateStepObjs(tokenizeResult);
+        InitStepObjs(tokenizeResult);
         return;
     }
 
@@ -70,10 +71,10 @@ public unsafe partial class StepParser(IStepObjCreator creater)
             switch (thirdToken.TokenType)
             {
                 case StepTokenType.Entity:
-                    obj = creater.Create(thirdToken.GetEntityName(), thirdToken);
+                    obj = creator.Create(thirdToken.GetEntityName());
                     break;
                 case StepTokenType.LeftBracket:
-                    obj = creater.CreateComplex(lineBody);
+                    obj = creator.CreateComplex(lineBody);
                     break;
                 default:
                     break;
@@ -86,6 +87,40 @@ public unsafe partial class StepParser(IStepObjCreator creater)
         }
         stopWatch.Stop();
         Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+    }
+
+    private void InitStepObjs(StepTokenizeResult tokenizeResult)
+    {
+        var stopWatch = Stopwatch.StartNew();
+        foreach (var line in tokenizeResult)
+        {
+            if (line.Length < 4)
+            {
+                continue; // Skip empty lines or lines with insufficient tokens
+            }
+            var lineNumber = line[1].GetLineNumber();
+            if (_refMap.TryGetValue(lineNumber, out var stepObj) is false)
+            {
+                continue;
+            }
+            var thirdToken = line[3];
+            if (thirdToken.TokenType == StepTokenType.Entity)
+            {
+                var args = IStepObjCreator.GetEntityArgs(line[4..], out var hasArgs, out _);
+                if (hasArgs is false)
+                {
+                    continue; // No arguments to initialize
+                }
+                creator.InitStepObj(stepObj, args, _refMap);
+            }
+            else
+            {
+                creator.InitStepObj(stepObj, line[3..], _refMap);
+            }
+
+        }
+        stopWatch.Stop();
+        Console.WriteLine($"Initialization took: {stopWatch.ElapsedMilliseconds} ms");
     }
 
     private static void PrintTokens(StepTokenizeResult tokens)
@@ -154,4 +189,3 @@ public unsafe partial class StepParser(IStepObjCreator creater)
 
 
 }
-
