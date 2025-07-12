@@ -92,25 +92,25 @@ public unsafe partial class StepParser(IStepObjCreator creater)
             switch (token.TokenType)
             {
                 case StepTokenType.Integer:
-                    result.Add(new IntegerExpress(token.As<IntegerToken>().Value));
+                    result.Add(new IntegerExpress(token.GetIntegerValue()));
                     break;
                 case StepTokenType.Real:
-                    result.Add(new RealExpress(token.As<RealToken>().Value));
+                    result.Add(new RealExpress(token.GetRealValue()));
                     break;
                 case StepTokenType.String:
-                    result.Add(new StringExpress(_gb18030.GetString(token.As<StringToken>().Value)));
+                    result.Add(new StringExpress(_gb18030.GetString(token.GetStringValue())));
                     break;
                 case StepTokenType.Enum:
-                    result.Add(new EnumExpress(Encoding.ASCII.GetString(token.As<EnumToken>().Value)));
+                    result.Add(new EnumExpress(Encoding.ASCII.GetString(token.GetEnumValue())));
                     break;
                 case StepTokenType.Boolean:
-                    result.Add(new BooleanExpress(token.As<BooleanToken>().Value));
+                    result.Add(new BooleanExpress(token.GetBooleanValue()));
                     break;
                 case StepTokenType.Asterisk:
                     result.Add(new AsteriskExpress());
                     break;
                 case StepTokenType.LineNumber:
-                    result.Add(new RefExpress(token.As<LineNumberToken>().LineNumber));
+                    result.Add(new RefExpress(token.GetLineNumber()));
                     break;
                 case StepTokenType.Dollar:
                     result.Add(new DollarExpress());
@@ -186,7 +186,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
         {
             throw new Exception("Invalid entity");
         }
-        var entityName = Encoding.ASCII.GetString(entityTokens[0].As<EntityToken>().EntityName);
+        var entityName = Encoding.ASCII.GetString(entityTokens[0].GetEntityName());
         var args = new List<IExpress>();
         for (int i = 2; i < entityTokens.Length; i++)
         {
@@ -194,19 +194,19 @@ public unsafe partial class StepParser(IStepObjCreator creater)
             switch (token.TokenType)
             {
                 case StepTokenType.Integer:
-                    args.Add(new IntegerExpress(token.As<IntegerToken>().Value));
+                    args.Add(new IntegerExpress(token.GetIntegerValue()));
                     break;
                 case StepTokenType.Real:
-                    args.Add(new RealExpress(token.As<RealToken>().Value));
+                    args.Add(new RealExpress(token.GetRealValue()));
                     break;
                 case StepTokenType.String:
-                    args.Add(new StringExpress(_gb18030.GetString(token.As<StringToken>().Value)));
+                    args.Add(new StringExpress(_gb18030.GetString(token.GetStringValue())));
                     break;
                 case StepTokenType.Enum:
-                    args.Add(new EnumExpress(Encoding.ASCII.GetString(token.As<EnumToken>().Value)));
+                    args.Add(new EnumExpress(Encoding.ASCII.GetString(token.GetEnumValue())));
                     break;
                 case StepTokenType.Boolean:
-                    args.Add(new BooleanExpress(token.As<BooleanToken>().Value));
+                    args.Add(new BooleanExpress(token.GetBooleanValue()));
                     break;
                 case StepTokenType.Asterisk:
                     args.Add(new AsteriskExpress());
@@ -215,7 +215,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
                     args.Add(new DollarExpress());
                     break;
                 case StepTokenType.LineNumber:
-                    args.Add(new RefExpress(token.As<LineNumberToken>().LineNumber));
+                    args.Add(new RefExpress(token.GetLineNumber()));
                     break;
                 case StepTokenType.Entity:
                     {
@@ -251,7 +251,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
         {
             throw new Exception("Invalid line number");
         }
-        var lineNumberValue = lineTokens[0].As<LineNumberToken>().LineNumber;
+        var lineNumberValue = lineTokens[0].GetLineNumber();
         if (lineTokens[1].TokenType != StepTokenType.Equal)
         {
             throw new Exception("Invalid equal sign");
@@ -279,13 +279,13 @@ public unsafe partial class StepParser(IStepObjCreator creater)
                 switch (token.TokenType)
                 {
                     case StepTokenType.LineNumber:
-                        Console.Write($"#{token.As<LineNumberToken>().LineNumber}");
+                        Console.Write($"#{token.GetLineNumber()}");
                         break;
                     case StepTokenType.Equal:
                         Console.Write("=");
                         break;
                     case StepTokenType.Entity:
-                        Console.Write(Encoding.ASCII.GetString(token.As<EntityToken>().EntityName));
+                        Console.Write(Encoding.ASCII.GetString(token.GetEntityName()));
                         break;
                     case StepTokenType.LeftBracket:
                         Console.Write("(");
@@ -297,16 +297,16 @@ public unsafe partial class StepParser(IStepObjCreator creater)
                         Console.Write(",");
                         break;
                     case StepTokenType.Integer:
-                        Console.Write(token.As<IntegerToken>().Value);
+                        Console.Write(token.GetIntegerValue());
                         break;
                     case StepTokenType.Real:
-                        Console.Write(token.As<RealToken>().Value);
+                        Console.Write(token.GetRealValue());
                         break;
                     case StepTokenType.String:
-                        Console.Write($"'{_gb18030.GetString(token.As<StringToken>().Value)}'");
+                        Console.Write($"'{_gb18030.GetString(token.GetStringValue())}'");
                         break;
                     case StepTokenType.Enum:
-                        Console.Write($".{Encoding.ASCII.GetString(token.As<EnumToken>().Value)}.");
+                        Console.Write($".{Encoding.ASCII.GetString(token.GetEnumValue())}.");
                         break;
                     case StepTokenType.Semicolon:
                         Console.WriteLine(";");
@@ -318,7 +318,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
                         Console.Write("$");
                         break;
                     case StepTokenType.Boolean:
-                        if (token.As<BooleanToken>().Value)
+                        if (token.GetBooleanValue())
                         {
                             Console.Write(".T.");
                         }

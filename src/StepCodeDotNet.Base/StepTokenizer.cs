@@ -25,20 +25,87 @@ public enum StepTokenType
 }
 public unsafe struct IStepToken
 {
-    private readonly void* ptr;
-    public readonly StepTokenType TokenType => *(StepTokenType*)ptr;
+    private readonly nint _taggedValue;
+
+    private const int TYPE_BITS = 4;
+    private const nint TYPE_MASK = (1 << TYPE_BITS) - 1;
+    private const int VALUE_BITS = 60; // 64 - 4 = 60位用于存储值或指针
+
+    public readonly StepTokenType TokenType => (StepTokenType)(_taggedValue & TYPE_MASK);
+
+    // 检查是否为直接存储的值
+    public readonly bool IsDirectValue => TokenType switch
+    {
+        StepTokenType.Integer => true,
+        StepTokenType.Boolean => true,
+        StepTokenType.LineNumber => true,
+        StepTokenType.Equal => true,
+        StepTokenType.LeftBracket => true,
+        StepTokenType.RightBracket => true,
+        StepTokenType.Comma => true,
+        StepTokenType.Semicolon => true,
+        StepTokenType.Asterisk => true,
+        StepTokenType.Dollar => true,
+        _ => false
+    };
+
+    // 对于存储指针的token（复杂类型）
     public readonly ref T As<T>() where T : unmanaged
     {
+        Debug.Assert(!IsDirectValue, "Cannot call As<T>() on a direct value token.");
+        // 清除类型位，获取指针
+        var ptr = (void*)(_taggedValue & ~TYPE_MASK);
         return ref *(T*)ptr;
     }
-    public IStepToken(void* ptr)
+
+    // 获取直接存储的int值
+    public readonly int GetIntValue()
     {
-        this.ptr = ptr;
+        Debug.Assert(TokenType == StepTokenType.Integer || TokenType == StepTokenType.LineNumber);
+        return (int)(_taggedValue >> TYPE_BITS);
+    }
+
+    // 获取直接存储的bool值
+    public readonly bool GetBoolValue()
+    {
+        Debug.Assert(TokenType == StepTokenType.Boolean);
+        return (_taggedValue >> TYPE_BITS) != 0;
+    }
+
+    // 构造函数：指针存储（复杂类型）
+    public IStepToken(void* ptr, StepTokenType type)
+    {
+        // 确保指针低4位为0（自然对齐）
+        Debug.Assert(((nint)ptr & TYPE_MASK) == 0, "Pointer must be aligned to 16 bytes");
+        _taggedValue = (nint)ptr | (nint)type;
+    }
+
+    // 构造函数：直接值存储（int）
+    public IStepToken(int value, StepTokenType type)
+    {
+        Debug.Assert(type == StepTokenType.Integer || type == StepTokenType.LineNumber);
+        _taggedValue = ((nint)value << TYPE_BITS) | (nint)type;
+    }
+
+    // 构造函数：直接值存储（bool）
+    public IStepToken(bool value, StepTokenType type)
+    {
+        Debug.Assert(type == StepTokenType.Boolean);
+        _taggedValue = (value ? (nint)1 : (nint)0) << TYPE_BITS | (nint)type;
+    }
+
+    // 构造函数：无值token（标记类型）
+    public IStepToken(StepTokenType type)
+    {
+        Debug.Assert(type == StepTokenType.Equal || type == StepTokenType.LeftBracket ||
+                     type == StepTokenType.RightBracket || type == StepTokenType.Comma ||
+                     type == StepTokenType.Semicolon || type == StepTokenType.Asterisk ||
+                     type == StepTokenType.Dollar);
+        _taggedValue = (nint)type;
     }
 }
 public readonly struct LineNumberToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.LineNumber;
     public readonly int LineNumber;
     public LineNumberToken(int lineNumber)
     {
@@ -47,25 +114,20 @@ public readonly struct LineNumberToken
 }
 public readonly struct EqualToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.Equal;
 }
 public readonly struct LeftBracketToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.LeftBracket;
 }
 
 public readonly struct RightBracketToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.RightBracket;
 }
 
 public readonly struct CommaToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.Comma;
 }
 public readonly struct IntegerToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.Integer;
     public readonly int Value;
     public IntegerToken(int value)
     {
@@ -74,7 +136,6 @@ public readonly struct IntegerToken
 }
 public readonly struct RealToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.Real;
     public readonly double Value;
     public RealToken(double value)
     {
@@ -84,7 +145,6 @@ public readonly struct RealToken
 
 public readonly unsafe struct EntityToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.Entity;
     public readonly byte* Ptr;
     public readonly int Length;
     public readonly ReadOnlySpan<byte> EntityName => new(Ptr, Length);
@@ -98,7 +158,6 @@ public readonly unsafe struct EntityToken
 
 public readonly unsafe struct StringToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.String;
     public readonly byte* Ptr;
     public readonly int Length;
     public readonly ReadOnlySpan<byte> Value => new(Ptr, Length);
@@ -111,7 +170,6 @@ public readonly unsafe struct StringToken
 }
 public readonly unsafe struct EnumToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.Enum;
     public readonly byte* Ptr;
     public readonly int Length;
     public readonly ReadOnlySpan<byte> Value => new(Ptr, Length);
@@ -123,15 +181,12 @@ public readonly unsafe struct EnumToken
 }
 public readonly struct SemicolonToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.Semicolon;
 }
 public readonly struct AsteriskToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.Asterisk;
 }
 public readonly struct BooleanToken
 {
-    public readonly StepTokenType TokenType = StepTokenType.Boolean;
     public readonly bool Value;
     public BooleanToken(bool value)
     {
@@ -140,7 +195,6 @@ public readonly struct BooleanToken
 }
 public readonly struct DollarToken()
 {
-    public readonly StepTokenType TokenType = StepTokenType.Dollar;
 }
 
 
@@ -152,40 +206,46 @@ internal readonly ref struct StepTokenizeResult(UMSpanList<IStepToken> tokens, U
 
 public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
 {
-    private readonly byte* _ptr = (byte*)NativeMemory.Alloc((nuint)capacity);
+    private readonly byte* _ptr = (byte*)NativeMemory.AlignedAlloc((nuint)capacity, 16);
     private Int64 _used = 0;
 
     public T* Rent<T>(T value) where T : unmanaged
     {
-        Debug.Assert(_used + sizeof(T) <= capacity, "Not enough memory in pool to rent the requested type.");
-        var ptr = (T*)(_ptr + _used);
+        // 确保16字节对齐
+        var alignedUsed = (_used + 15) & ~15;
+        Debug.Assert(alignedUsed + sizeof(T) <= capacity, "Not enough memory in pool to rent the requested type.");
+        var ptr = (T*)(_ptr + alignedUsed);
         Unsafe.Write(ptr, value);
-        _used += sizeof(T);
+        _used = alignedUsed + sizeof(T);
         return ptr;
     }
 
-
     public T* RentBuffer<T>(scoped ReadOnlySpan<T> buffer) where T : unmanaged
     {
-        Debug.Assert(_used + buffer.Length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested buffer.");
-        var ptr = (T*)(_ptr + _used);
+        // 确保16字节对齐
+        var alignedUsed = (_used + 15) & ~15;
+        Debug.Assert(alignedUsed + buffer.Length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested buffer.");
+        var ptr = (T*)(_ptr + alignedUsed);
         buffer.CopyTo(new Span<T>(ptr, buffer.Length));
-        _used += buffer.Length * sizeof(T);
+        _used = alignedUsed + buffer.Length * sizeof(T);
         return ptr;
     }
 
     public Span<T> RentSpan<T>(int length) where T : unmanaged
     {
-        Debug.Assert(_used + length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested span.");
-        var ptr = (T*)(_ptr + _used);
-        _used += length * sizeof(T);
+        // 确保16字节对齐
+        var alignedUsed = (_used + 15) & ~15;
+        Debug.Assert(alignedUsed + length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested span.");
+        var ptr = (T*)(_ptr + alignedUsed);
+        _used = alignedUsed + length * sizeof(T);
         return new Span<T>(ptr, length);
     }
 
-    public IStepToken RentToken<T>(T value) where T : unmanaged
+    // 为复杂类型分配内存的Token
+    public IStepToken RentToken<T>(T value, StepTokenType type) where T : unmanaged
     {
         var ptr = Rent(value);
-        return new IStepToken(ptr);
+        return new IStepToken(ptr, type);
     }
 
     public IStepToken RentEnumToken(scoped ReadOnlySpan<byte> buffer)
@@ -193,7 +253,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         var rentBuffer = RentBuffer(buffer);
         var value = new EnumToken(rentBuffer, buffer.Length);
         var ptr = Rent(value);
-        return new IStepToken(ptr);
+        return new IStepToken(ptr, StepTokenType.Enum);
     }
 
     public IStepToken RentStringToken(scoped ReadOnlySpan<byte> buffer)
@@ -201,7 +261,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         var rentBuffer = RentBuffer(buffer);
         var value = new StringToken(rentBuffer, buffer.Length);
         var ptr = Rent(value);
-        return new IStepToken(ptr);
+        return new IStepToken(ptr, StepTokenType.String);
     }
 
     public IStepToken RentEntityToken(scoped ReadOnlySpan<byte> buffer)
@@ -209,7 +269,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         var rentBuffer = RentBuffer(buffer);
         var value = new EntityToken(rentBuffer, buffer.Length);
         var ptr = Rent(value);
-        return new IStepToken(ptr);
+        return new IStepToken(ptr, StepTokenType.Entity);
     }
 
     public readonly Int64 RemainingCapacity => capacity - _used;
@@ -219,7 +279,6 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         NativeMemory.Free(_ptr);
         _used = 0;
     }
-
 }
 
 public unsafe ref struct StepTokenizer
@@ -294,7 +353,7 @@ public unsafe ref struct StepTokenizer
             start++;
         }
         var value = int.Parse(line[..start]);
-        return (_memoryPool.RentToken(new LineNumberToken(value)), start);
+        return (new IStepToken(value, StepTokenType.LineNumber), start);
     }
 
     private (IStepToken token, int endIndex) GetEnumToken(ReadOnlySpan<byte> line)
@@ -313,17 +372,17 @@ public unsafe ref struct StepTokenizer
         }
         if (sb.Count == 0)
         {
-            return (_memoryPool.RentToken(new DollarToken()), endIndex);
+            return (new IStepToken(StepTokenType.Dollar), endIndex);
         }
         if (sb.Count == 1)
         {
             if (sb[0] == 'T')
             {
-                return (_memoryPool.RentToken(new BooleanToken(true)), endIndex);
+                return (new IStepToken(true, StepTokenType.Boolean), endIndex);
             }
             else if (sb[0] == 'F')
             {
-                return (_memoryPool.RentToken(new BooleanToken(false)), endIndex);
+                return (new IStepToken(false, StepTokenType.Boolean), endIndex);
             }
         }
         return (_memoryPool.RentEnumToken(sb), endIndex);
@@ -376,11 +435,12 @@ public unsafe ref struct StepTokenizer
         var str = line[..endIndex];
         if (isReal)
         {
-            return (_memoryPool.RentToken(new RealToken(double.Parse(str))), endIndex - 1);
+            return (_memoryPool.RentToken(new RealToken(double.Parse(str)), StepTokenType.Real), endIndex - 1);
         }
         else
         {
-            return (_memoryPool.RentToken(new IntegerToken(int.Parse(str))), endIndex - 1);
+            var intValue = int.Parse(str);
+            return (new IStepToken(intValue, StepTokenType.Integer), endIndex - 1);
         }
 
     }
@@ -418,25 +478,25 @@ public unsafe ref struct StepTokenizer
                         break;
                     }
                 case (byte)'=':
-                    tokens.Add(_memoryPool.RentToken(new EqualToken()));
+                    tokens.Add(new IStepToken(StepTokenType.Equal));
                     break;
                 case (byte)'(':
-                    tokens.Add(_memoryPool.RentToken(new LeftBracketToken()));
+                    tokens.Add(new IStepToken(StepTokenType.LeftBracket));
                     break;
                 case (byte)')':
-                    tokens.Add(_memoryPool.RentToken(new RightBracketToken()));
+                    tokens.Add(new IStepToken(StepTokenType.RightBracket));
                     break;
                 case (byte)',':
-                    tokens.Add(_memoryPool.RentToken(new CommaToken()));
+                    tokens.Add(new IStepToken(StepTokenType.Comma));
                     break;
                 case (byte)';':
-                    tokens.Add(_memoryPool.RentToken(new SemicolonToken()));
+                    tokens.Add(new IStepToken(StepTokenType.Semicolon));
                     break;
                 case (byte)'*':
-                    tokens.Add(_memoryPool.RentToken(new AsteriskToken()));
+                    tokens.Add(new IStepToken(StepTokenType.Asterisk));
                     break;
                 case (byte)'$':
-                    tokens.Add(_memoryPool.RentToken(new DollarToken()));
+                    tokens.Add(new IStepToken(StepTokenType.Dollar));
                     break;
                 case (byte)'.':
                     {
@@ -515,4 +575,50 @@ public unsafe ref struct StepTokenizer
         _memoryPool.Dispose();
     }
 
+}
+
+// 为IStepToken添加便捷的扩展方法
+public static class StepTokenExtensions
+{
+    public static int GetLineNumber(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.LineNumber);
+        return token.GetIntValue();
+    }
+
+    public static int GetIntegerValue(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.Integer);
+        return token.GetIntValue();
+    }
+
+    public static bool GetBooleanValue(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.Boolean);
+        return token.GetBoolValue();
+    }
+
+    public static double GetRealValue(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.Real);
+        return token.As<RealToken>().Value;
+    }
+
+    public static ReadOnlySpan<byte> GetStringValue(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.String);
+        return token.As<StringToken>().Value;
+    }
+
+    public static ReadOnlySpan<byte> GetEntityName(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.Entity);
+        return token.As<EntityToken>().EntityName;
+    }
+
+    public static ReadOnlySpan<byte> GetEnumValue(this IStepToken token)
+    {
+        Debug.Assert(token.TokenType == StepTokenType.Enum);
+        return token.As<EnumToken>().Value;
+    }
 }
