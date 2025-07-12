@@ -202,6 +202,41 @@ internal readonly ref struct StepTokenizeResult(UMSpanList<IStepToken> tokens, U
 {
     public readonly UMSpanList<IStepToken> Tokens = tokens;
     public readonly UMSpanList<int> Lines = lines;
+
+    public readonly Span<IStepToken> this[Range range] => Tokens[range];
+
+    public readonly Enumerator GetEnumerator()
+    {
+        return new Enumerator(Tokens, Lines);
+    }
+
+
+    public ref struct Enumerator(UMSpanList<IStepToken> tokens, UMSpanList<int> lines)
+    {
+        private readonly UMSpanList<IStepToken> _tokens = tokens;
+        private readonly UMSpanList<int> _lines = lines;
+        private int _index = -1;
+        private int _lastEnd = 0;
+        public bool MoveNext()
+        {
+            _index++;
+            if (_index < _lines.Count && _lastEnd < _lines[_index])
+            {
+                return true;
+            }
+            return false;
+        }
+        public ReadOnlySpan<IStepToken> Current
+        {
+            get
+            {
+                var end = _lines[_index];
+                var start = _lastEnd;
+                _lastEnd = end;
+                return _tokens[start..end];
+            }
+        }
+    }
 }
 
 public unsafe ref struct StepTokensMemoryPool(Int64 capacity)

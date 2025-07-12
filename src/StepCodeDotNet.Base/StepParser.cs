@@ -58,7 +58,7 @@ public unsafe partial class StepParser(IStepObjCreator creater)
     {
         var stopWatch = Stopwatch.StartNew();
         using var tokenizer = new StepTokenizer(stepPath);
-        var tokenLists = tokenizer.TokenizeSync();
+        var tokenizeResult = tokenizer.TokenizeSync();
         stopWatch.Stop();
         Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
 #if DEBUG
@@ -66,16 +66,9 @@ public unsafe partial class StepParser(IStepObjCreator creater)
 #endif
         stopWatch.Restart();
         var expressList = new List<LineExpress>();
-        int lineStart = 0;
-        foreach (var lineEnd in tokenLists.Lines.AsSpan())
+        foreach (var line in tokenizeResult)
         {
-            var lineTokens = tokenLists.Tokens[lineStart..lineEnd];
-            if (lineTokens.Length == 0)
-            {
-                continue; // Skip empty lines
-            }
-            lineStart = lineEnd;
-            var lineExpress = ResolveLine(lineTokens);
+            var lineExpress = ResolveLine(line);
             expressList.Add(lineExpress);
         }
         stopWatch.Stop();

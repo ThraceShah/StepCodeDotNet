@@ -282,4 +282,24 @@ internal ref struct UMSpanList<T>(Span<T> buffer) where T : unmanaged
         return list.ToArray();
     }
 
+    public readonly Enumerator GetEnumerator()
+    {
+        return new Enumerator(_buffer[.._count]);
+    }
+
+
+    public ref struct Enumerator(Span<T> buffer)
+    {
+        private readonly Span<T> _buffer = buffer;
+        private int index = -1;
+
+        public bool MoveNext()
+        {
+            index++;
+            return index < _buffer.Length;
+        }
+
+        public readonly ref T Current => ref _buffer[index];
+    }
+
 }
