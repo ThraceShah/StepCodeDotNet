@@ -86,7 +86,7 @@ public interface IStepObjCreator
     {
         return express.TokenType switch
         {
-            StepTokenType.String => Encoding.GetString(express.GetEntityName()),
+            StepTokenType.String => Encoding.GetString(express.GetStringValue()),
             _ => string.Empty,
         };
     }

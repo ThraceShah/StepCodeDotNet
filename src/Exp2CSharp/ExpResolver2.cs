@@ -173,6 +173,16 @@ unsafe class ExpResolver2
         ["BINARY"] = "System.Byte[]",
     };
 
+    readonly Dictionary<string, string> typeValueGetFuncMap = new()
+    {
+        ["REAL"] = "GetRealValue",
+        ["INTEGER"] = "GetIntegerValue",
+        ["STRING"] = "GetStringValue",
+        ["BOOLEAN"] = "GetBooleanValue",
+        ["NUMBER"] = "GetRealValue",
+        ["BINARY"] = "GetBinaryValue",
+    };
+
     (List<string> lefts, List<string> rights, List<string> complexies) complexEntities = ([], [], []);
 
     Dictionary<string, StepBaseDefine> baseNameDict = [];
@@ -532,11 +542,11 @@ unsafe class ExpResolver2
     {
         if (type.ValueType is StepAggregate aggregateType)
         {
-            return $"List<{GetAggregateTypeStr(aggregateType)}>";
+            return $"{GetAggregateTypeStr(aggregateType)}[]";
         }
         else
         {
-            return $"List<{GetStepTypeStrng(type.ValueType!)}>";
+            return $"{GetStepTypeStrng(type.ValueType!)}[]";
         }
     }
 
@@ -603,9 +613,25 @@ unsafe class ExpResolver2
 
     private void PrintIEntityImp(Dictionary<nint, StepEntity> entitiesDict)
     {
+        var initFileName = Path.Combine(outputDir, $"EntityImpInit.cs");
+        using var initWriter = new StreamWriter(initFileName);
+        initWriter.WriteLine($"namespace {NameSpace};");
+        initWriter.WriteLine("public static class EntityImpInit");
+        initWriter.WriteLine("{");
+
+        var initRegFileName = Path.Combine(outputDir, $"EntityImpInitReg.cs");
+        using var initRegWriter = new StreamWriter(initRegFileName);
+        initRegWriter.WriteLine($"namespace {NameSpace};");
+        initRegWriter.WriteLine("using System.Collections.Frozen;");
+        initRegWriter.WriteLine("public static class EntityImpInitReg");
+        initRegWriter.WriteLine("{");
+        initRegWriter.WriteLine($"    public static readonly FrozenDictionary<Type, Action<IStepObjCreator,IStepObj, ReadOnlySpan<IStepToken>, Dictionary<int, IStepObj>>> _entityInitFuncMap = new Dictionary<Type, Action<IStepObjCreator,IStepObj, ReadOnlySpan<IStepToken>, Dictionary<int, IStepObj>>>");
+        initRegWriter.WriteLine("    {");
+
         var fileName = Path.Combine(outputDir, $"EntityImpls.cs");
         using var writer = new StreamWriter(fileName);
         writer.WriteLine($"namespace {NameSpace};");
+
         foreach (var (_, obj) in entitiesDict)
         {
             var entityName = obj.Name;
@@ -626,30 +652,85 @@ unsafe class ExpResolver2
                     writer.WriteLine($"    {GetStepTypeStrng(type)} {subEntity.Name}.{attrName} {{ get; set; }}");
                 }
             }
-            writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
-            writer.WriteLine("    {");
-            writer.WriteLine("        var entityExpress = (EntityExpress)expression;");
-            writer.WriteLine("        var argExps = entityExpress.Args;");
-            writer.WriteLine("        switch (argExps.Count)");
-            writer.WriteLine("        {");
+            writer.WriteLine("}");
+
+            initWriter.WriteLine($"    static readonly Func<IStepObjCreator, {entityName}, ReadOnlySpan<IStepToken>, Dictionary<int, IStepObj>, ReadOnlySpan<IStepToken>>[] {entityName}_Funcs = [");
+
             for (int x = 0; x < allAttrs.Count; x++)
             {
-                int y = x + 1;
-                writer.WriteLine($"            case {y}:");
-                for (int i = 0; i < y; i++)
+                initWriter.WriteLine("        (c, o, a, m) =>");
+                initWriter.WriteLine("        {");
+                var (type, attrName, subEntity) = allAttrs[x];
+                if (type is StepBaseDefine baseType)
                 {
-                    var (type, attrName, subEntity) = allAttrs[i];
-                    writer.WriteLine($"                (({subEntity.Name})this).{attrName} = {GetInstanceCreateStr(type, i)};");
+                    initWriter.WriteLine($"            var r = c.Get{baseType.Type}(a[0]);");
+                    initWriter.WriteLine($"            (({subEntity.Name})o).{attrName} = r;");
+                    initWriter.WriteLine("            return a[1..];");
                 }
-                writer.WriteLine("                return;");
-            }
-            writer.WriteLine("            default:");
-            writer.WriteLine("                return;");
-            writer.WriteLine("        }");
-            writer.WriteLine("    }");
+                else if (type is StepEnum enumType)
+                {
+                    initWriter.WriteLine($"            var r = c.GetEnum<{enumType.Name.ToUpper()}>(a[0]);");
+                    initWriter.WriteLine($"            (({subEntity.Name})o).{attrName} = r;");
+                    initWriter.WriteLine("                return a[1..];");
+                }
+                else if (type is StepSelect selectType)
+                {
+                    initWriter.WriteLine($"            var (r,endIndex) = c.GetEntity<{selectType.Name}>(a, m);");
+                    initWriter.WriteLine($"            (({subEntity.Name})o).{attrName} = r;");
+                    initWriter.WriteLine("            if (endIndex == a.Length)");
+                    initWriter.WriteLine("            {");
+                    initWriter.WriteLine("                return [];");
+                    initWriter.WriteLine("            }");
+                    initWriter.WriteLine("            return a[endIndex..];");
 
-            writer.WriteLine("}");
+                }
+                else if (type is StepAggregate aggregateType)
+                {
+                    initWriter.WriteLine($"            var list = IStepObjCreator.GetListTokens(a, out var valid, out var endIndex);");
+                    initWriter.WriteLine($"            var r = c.GetAggregate<{GetStepTypeStrng(aggregateType.ValueType!)}>(list, m);");
+                    initWriter.WriteLine($"            (({subEntity.Name})o).{attrName} = r;");
+                    initWriter.WriteLine("            if (endIndex == a.Length)");
+                    initWriter.WriteLine("            {");
+                    initWriter.WriteLine("                return [];");
+                    initWriter.WriteLine("            }");
+                    initWriter.WriteLine("            return a[endIndex..];");
+                }
+                else if (type is StepEntity entityType)
+                {
+                    initWriter.WriteLine($"            var (r,endIndex) = c.GetEntity<{entityType.Name}>(a, m);");
+                    initWriter.WriteLine($"            (({subEntity.Name})o).{attrName} = r;");
+                    initWriter.WriteLine("            if (endIndex == a.Length)");
+                    initWriter.WriteLine("            {");
+                    initWriter.WriteLine("                return [];");
+                    initWriter.WriteLine("            }");
+                    initWriter.WriteLine("            return a[endIndex..];");
+                }
+                initWriter.WriteLine("        },");
+            }
+            initWriter.WriteLine("    ];");
+
+            initWriter.WriteLine($"    public static void Init_{entityName}(IStepObjCreator creator, IStepObj obj, ReadOnlySpan<IStepToken> args, Dictionary<int, IStepObj> refMap)");
+            initWriter.WriteLine("    {");
+            initWriter.WriteLine("        var argExps = args;");
+            initWriter.WriteLine($"        var stepObj=({entityName})obj;");
+            initWriter.WriteLine($"        foreach (var init in {entityName}_Funcs)");
+            initWriter.WriteLine("        {");
+            initWriter.WriteLine("            argExps = init(creator, stepObj, argExps, refMap);");
+            initWriter.WriteLine("            if (argExps.Length == 0)");
+            initWriter.WriteLine("            {");
+            initWriter.WriteLine("                return;");
+            initWriter.WriteLine("            }");
+            initWriter.WriteLine("        }");
+            initWriter.WriteLine("    }");
+
+            initRegWriter.WriteLine($"        {{typeof({entityName}_imp), EntityImpInit.Init_{entityName}}},");
         }
+
+        initWriter.WriteLine("}");
+
+        initRegWriter.WriteLine("    }.ToFrozenDictionary();");
+        initRegWriter.WriteLine("}");
+
     }
 
     private string GetEntityMethodStr(StepEntity entityType)
@@ -1020,8 +1101,16 @@ unsafe class ExpResolver2
         writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
         writer.WriteLine($"    private const int NAMESPACE_LENGTH = {NameSpace.Length};");
-        writer.WriteLine("    private static readonly StepObjCreator instance = new();");
-        writer.WriteLine("    private static IStepBaseObj Create(EntityExpress express) => express.EntityName switch");
+        writer.WriteLine("    public IStepBaseObj Create(ReadOnlySpan<char> entityName) => entityName switch");
+        writer.WriteLine("    {");
+        foreach (var entity in entitiesDict.Values)
+        {
+            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}_imp(),");
+        }
+        writer.WriteLine("        _ => default");
+        writer.WriteLine("    };");
+
+        writer.WriteLine("    public IStepBaseObj Create(ReadOnlySpan<char> entityName, ReadOnlySpan<IStepToken> argTokens) => entityName switch");
         writer.WriteLine("    {");
         foreach (var entity in entitiesDict.Values)
         {
@@ -1033,29 +1122,12 @@ unsafe class ExpResolver2
             {
                 continue;
             }
-            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(((IExpress<{typeMap[baseDef.Type]}>)express.Args[0]).Value),");
+            // writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(((IExpress<{typeMap[baseDef.Type]}>)express).Value),");
+            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(express[0].{typeValueGetFuncMap[baseDef.Type]}()),");
+
         }
         writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
-
-        writer.WriteLine("    private static IStepBaseObj Create(string entityName, IExpress express) => entityName switch");
-        writer.WriteLine("    {");
-        foreach (var entity in entitiesDict.Values)
-        {
-            writer.WriteLine($"        \"{entity.Name.ToUpper()}\" => new {entity.Name}_imp(),");
-        }
-        foreach (var baseDef in baseDict.Values)
-        {
-            if (baseDef.Name == "LOGICAL")
-            {
-                continue;
-            }
-            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(((IExpress<{typeMap[baseDef.Type]}>)express).Value),");
-        }
-        writer.WriteLine("        _ => default");
-        writer.WriteLine("    };");
-
-        writer.WriteLine("    public static StepObjCreator Instance=>instance ;");
 
         writer.Write("    static readonly FrozenSet<string> _leftNames = [");
         foreach (var entity in complexEntities.lefts)
@@ -1075,7 +1147,7 @@ unsafe class ExpResolver2
             writer.Write($"\"{entity.ToUpper()}\",");
         }
         writer.WriteLine("];");
-        writer.WriteLine("    public static IStepObj CreateComplex(string complexName) => complexName switch");
+        writer.WriteLine("    public IStepObj CreateComplex(ReadOnlySpan<char> complexName) => complexName switch");
         writer.WriteLine("    {");
         foreach (var entity in complexEntities.complexies)
         {
@@ -1084,299 +1156,8 @@ unsafe class ExpResolver2
         writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
 
-        writer.WriteLine(STEPOBJCREATORGET);
         writer.WriteLine("}");
     }
 
-
-    const string STEPOBJCREATORGET = """
-        
-        public static T GetEnum<T>(IExpress express) where T : struct, Enum
-        {
-            if (express is not EnumExpress)
-            {
-                return (T)(object)-1;
-            }
-            var enumExpress = (EnumExpress)express;
-            return Enum.Parse<T>(enumExpress.Value);
-        }
-
-
-        public static double GetREAL(IExpress express)
-        {
-            if (express is RealExpress realExpress)
-            {
-                return realExpress.Value;
-            }
-            else if (express is IntegerExpress integerExpress)
-            {
-                return integerExpress.Value;
-            }
-            return 0.0;
-        }
-
-
-        public static int GetINTEGER(IExpress express)
-        {
-            var integerExpress = (IntegerExpress)express;
-            return integerExpress.Value;
-        }
-
-        public static double GetNUMBER(IExpress express)
-        {
-            if (express is RealExpress realExpress)
-            {
-                return realExpress.Value;
-            }
-            else if (express is IntegerExpress integerExpress)
-            {
-                return integerExpress.Value;
-            }
-            return 0.0;
-        }
-
-        public static byte[] GetBINARY(IExpress express)
-        {
-            throw new NotImplementedException();
-        }
-
-
-        public static string GetSTRING(IExpress express)
-        {
-            if (express is StringExpress stringExpress)
-            {
-                return stringExpress.Value;
-            }
-            return string.Empty;
-        }
-
-
-        public static bool GetBOOLEAN(IExpress express)
-        {
-            if (express is BooleanExpress booleanExpress)
-            {
-                return booleanExpress.Value;
-            }
-            return true;
-        }
-
-
-        public static T GetEntity<T>(IExpress express, Dictionary<int, IStepObj> refMap) where T : class
-        {
-            if (express is EntityExpress entityExpress)
-            {
-                var r = Create(entityExpress);
-                if (r is IStepObj stepObj)
-                {
-                    stepObj.Init(entityExpress, refMap);
-                }
-                return r as T;
-            }
-            else if (express is RefExpress refExpress)
-            {
-                if (refMap.TryGetValue(refExpress.RefLineNumber, out var stepObj))
-                {
-                    return stepObj as T;
-                }
-            }
-            return default;
-        }
-
-        public static T GetBaseEntity<T>(IExpress express, Dictionary<int, IStepObj> refMap) where T : unmanaged, IStepBaseObj
-        {
-            if (express is EntityExpress entityExpress)
-            {
-                var r = Create(entityExpress);
-                return (T)r;
-            }
-            return default;
-        }
-
-        private static List<T> GetRefAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            if (express is not ListExpress listExpress)
-            {
-                return [];
-            }
-            var result = new List<T>(listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                result.Add((T)refMap[((RefExpress)item).RefLineNumber]);
-            }
-            return result;
-        }
-
-        private static object GetRefAggregateObjs(IExpress express, Dictionary<int, IStepObj> refMap, Type listType)
-        {
-            if (express is not ListExpress listExpress)
-            {
-                return null;
-            }
-            var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
-            foreach (var item in listExpress.ExpressList)
-            {
-                ((IList)result).Add(refMap[((RefExpress)item).RefLineNumber]);
-            }
-            return result;
-        }
-        
-        public static object GetList(IExpress express, Dictionary<int, IStepObj> refMap, Type elementType)
-        {
-            var listType = typeof(List<>).MakeGenericType(elementType);
-            if (express is ListExpress listExpress)
-            {
-                if (listExpress.ExpressList.Count == 0)
-                {
-                    return Activator.CreateInstance(listType);
-                }
-                var firstElement = listExpress.ExpressList[0];
-
-                if (firstElement is RefExpress)
-                {
-                    return GetRefAggregateObjs(express, refMap, listType);
-                }
-                else if (firstElement is ListExpress)
-                {
-                    var elementElementType = elementType.GenericTypeArguments[0];
-                    var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
-                    foreach (var item in listExpress.ExpressList)
-                    {
-                        var element = GetList(item, refMap, elementElementType);
-                        ((IList)result).Add(element);
-                    }
-                }
-                else
-                {
-                    var typeName = elementType.Name.ToUpper();
-                    var result = Activator.CreateInstance(listType, listExpress.ExpressList.Count);
-                    foreach (var item in listExpress.ExpressList)
-                    {
-                        var r = Create(typeName, item);
-                        if (r is IStepObj stepObj)
-                        {
-                            stepObj.Init(item, refMap);
-                        }
-                        ((IList)result).Add(r);
-                    }
-                    return result;
-                }
-            }
-            return default;
-        }
-        
-        public static List<T> GetAggregate<T>(IExpress express, Dictionary<int, IStepObj> refMap)
-        {
-            if (express is ListExpress listExpress)
-            {
-                if (listExpress.ExpressList.Count == 0)
-                {
-                    return [];
-                }
-                var firstElement = listExpress.ExpressList[0];
-                if (firstElement is RefExpress)
-                {
-                    return GetRefAggregate<T>(express, refMap);
-                }
-                else if (firstElement is ListExpress)
-                {
-                    var elementElementType = typeof(T).GenericTypeArguments[0];
-                    var result = new List<T>(listExpress.ExpressList.Count);
-                    foreach (var item in listExpress.ExpressList)
-                    {
-                        var element = GetList(item, refMap, elementElementType);
-                        ((IList)result).Add(element);
-                    }
-                    return result;
-                }
-                else
-                {
-                    var typeName = typeof(T).Name.ToUpper();
-                    var result = new List<T>(listExpress.ExpressList.Count);
-                    foreach (var item in listExpress.ExpressList)
-                    {
-                        var r = Create(typeName, item);
-                        if (r is IStepObj stepObj)
-                        {
-                            stepObj.Init(item, refMap);
-                        }
-                        result.Add((T)r);
-                    }
-                    return result;
-
-                }
-            }
-            return default;
-        }
-
-        
-        private static IStepObj CreateComplex(ComplexExpress complexExpress)
-        {
-            foreach (var express in complexExpress.ExpressList)
-            {
-                if (_leftNames.Contains(express.EntityName))
-                {
-                    foreach (var item in complexExpress.ExpressList)
-                    {
-                        if (_rightNames.Contains(item.EntityName))
-                        {
-                            var complexName = $"{express.EntityName}_AND_{item.EntityName}";
-                            if (_complexNames.Contains(complexName))
-                            {
-                                return CreateComplex(complexName);
-                            }
-                        }
-                    }
-                }
-            }
-            return default;
-        }
-
-        public IStepObj[] CreateStepObjs(List<LineExpress> lineExpresses)
-        {
-            var refMap = new Dictionary<int, IStepObj>();
-            var stepObjs = new IStepObj[lineExpresses.Count];
-            var indexMap = new Dictionary<LineExpress, int>();
-            for (int i = 0; i < lineExpresses.Count; i++)
-            {
-                var lineExpress = lineExpresses[i];
-                switch (lineExpress.Body)
-                {
-                    case EntityExpress entityExpress:
-                        var r = Create(entityExpress);
-                        if (r is IStepObj stepObj)
-                        {
-                            stepObj.line_id = lineExpress.LineNumber;
-                            stepObjs[i] = stepObj;
-                            refMap.Add(lineExpress.LineNumber, stepObj);
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                        break;
-                    case ComplexExpress complexExpress:
-                        var complex = CreateComplex(complexExpress);
-                        if (complex == null)
-                        {
-                            Console.WriteLine($"Complex ({string.Join(",", complexExpress.ExpressList.Select(e => e.EntityName))}) not found.");
-                            break;
-                        }
-                        complex.line_id = lineExpress.LineNumber;
-                        stepObjs[i] = complex;
-                        refMap.Add(lineExpress.LineNumber, complex);
-                        break;
-                    default:
-                        throw new NotImplementedException();
-                }
-                indexMap.Add(lineExpress, i);
-            }
-            foreach (var (lineExp, index) in indexMap)
-            {
-                var stepObj = stepObjs[index];
-                stepObj.Init(lineExp.Body, refMap);
-            }
-            return stepObjs;
-        }
-    """;
 }
 
