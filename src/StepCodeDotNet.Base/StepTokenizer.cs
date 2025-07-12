@@ -296,7 +296,7 @@ public unsafe ref struct StepTokenizer
             throw new ArgumentException("The STEP file is too large to process.");
         }
         _fileSize = (int)fileInfo.Length;
-        long preAllocatedSize = fileInfo.Length * 8;
+        long preAllocatedSize = fileInfo.Length * 6;
         PrintPreallocatedMemoryInfo(preAllocatedSize);
         _memoryPool = new StepTokensMemoryPool(preAllocatedSize); // Allocate double the file size for tokens
     }
