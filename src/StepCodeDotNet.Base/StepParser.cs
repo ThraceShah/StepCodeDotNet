@@ -74,7 +74,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
                     obj = creator.Create(thirdToken.GetEntityName());
                     break;
                 case StepTokenType.LeftBracket:
-                    obj = creator.CreateComplex(lineBody);
+                    // obj = creator.CreateComplex(lineBody);
                     break;
                 default:
                     break;

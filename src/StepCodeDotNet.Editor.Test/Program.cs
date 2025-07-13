@@ -14,7 +14,7 @@ if (!File.Exists(stepFile))
     Console.WriteLine($"Step file not found: {stepFile}");
     return;
 }
-var creator = StepCodeDotNet.Gen.config_control_design.StepObjCreator.Instance;
+var creator = new StepCodeDotNet.Gen.config_control_design.StepObjCreator();
 var parser = new StepCodeDotNet.Base.StepParser(creator);
 var watch = new Stopwatch();
 watch.Start();

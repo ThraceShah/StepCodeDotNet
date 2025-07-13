@@ -28,12 +28,15 @@ public interface IStepObjCreator
         return Create(charName, argTokens);
     }
     public IStepBaseObj Create(ReadOnlySpan<char> entityName, ReadOnlySpan<IStepToken> argTokens);
-    public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress);
+    // public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress);
     public IStepObj CreateComplex(ReadOnlySpan<char> complexName);
 
-    public Array CreateArray(string typeName, int size);
-
     public void InitStepObj(IStepObj obj, ReadOnlySpan<IStepToken> argTokens, Dictionary<int, IStepObj> refMap);
+
+    public Array CreateArray(Type elementType, int size)
+    {
+        return Array.CreateInstance(elementType, size);
+    }
 
     public T GetEnum<T>(IStepToken express) where T : struct, Enum
     {
@@ -240,7 +243,7 @@ public interface IStepObjCreator
         return r;
     }
 
-    private Array GetRefAggregateObjs(ReadOnlySpan<IStepToken> express, Dictionary<int, IStepObj> refMap, string elementTypeName)
+    private Array GetRefAggregateObjs(ReadOnlySpan<IStepToken> express, Dictionary<int, IStepObj> refMap, Type elementType)
     {
         var n = (express.Length + 1) / 2;
         var temp = new IStepObj[n];
@@ -257,7 +260,7 @@ public interface IStepObjCreator
                 i++;
             }
         }
-        var r = CreateArray(elementTypeName, i);
+        var r = CreateArray(elementType, i);
         Array.Copy(temp, r, i);
         return r;
     }
@@ -276,11 +279,10 @@ public interface IStepObjCreator
         var bracketCount = arrayDepth - 1;
         if (bracketCount == 0)
         {
-            var typeName = elementType.Name.ToUpper();
             var firstElement = express[0];
             if (firstElement.TokenType == StepTokenType.LineNumber)
             {
-                return GetRefAggregateObjs(express, refMap, typeName);
+                return GetRefAggregateObjs(express, refMap, elementType);
             }
             else if (firstElement.TokenType == StepTokenType.Entity)
             {
@@ -289,7 +291,7 @@ public interface IStepObjCreator
             else
             {
                 var n = (express.Length + 1) / 2;
-                var result = CreateArray(typeName, n);
+                var result = CreateArray(elementType, n);
                 int i = 0;
                 Span<IStepToken> argTokens = stackalloc IStepToken[1];
                 foreach (var token in express)
@@ -299,6 +301,7 @@ public interface IStepObjCreator
                         continue;
                     }
                     argTokens[0] = token;
+                    var typeName = elementType.Name.ToUpper();
                     var r = Create(typeName, argTokens);
                     result.SetValue(r, i);
                     i++;

@@ -708,8 +708,8 @@ unsafe class ExpResolver2
                 initWriter.WriteLine("        },");
             }
             initWriter.WriteLine("    ];");
-
-            initWriter.WriteLine($"    public static void Init_{entityName}(IStepObjCreator creator, IStepObj obj, ReadOnlySpan<IStepToken> args, Dictionary<int, IStepObj> refMap)");
+            var newEntityName = entityName.Replace("@", "_");
+            initWriter.WriteLine($"    public static void Init_{newEntityName}(IStepObjCreator creator, IStepObj obj, ReadOnlySpan<IStepToken> args, Dictionary<int, IStepObj> refMap)");
             initWriter.WriteLine("    {");
             initWriter.WriteLine("        var argExps = args;");
             initWriter.WriteLine($"        var stepObj=({entityName})obj;");
@@ -723,7 +723,7 @@ unsafe class ExpResolver2
             initWriter.WriteLine("        }");
             initWriter.WriteLine("    }");
 
-            initRegWriter.WriteLine($"        {{typeof({entityName}_imp), EntityImpInit.Init_{entityName}}},");
+            initRegWriter.WriteLine($"        {{typeof({entityName}_imp), EntityImpInit.Init_{newEntityName}}},");
         }
 
         initWriter.WriteLine("}");
@@ -1033,57 +1033,57 @@ unsafe class ExpResolver2
             right
         };
         supers.UnionWith(leftSupers);
-        writer.WriteLine($"    private static readonly FrozenDictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>> _entityInitFuncMap = new Dictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>>");
-        writer.WriteLine("    {");
-        foreach (var super in supers)
-        {
-            if (super.Attributes.Count == 0)
-            {
-                continue;
-            }
-            writer.Write($"        {{\"{super.Name.ToUpper()}\",");
-            writer.WriteLine($"{super.Name}_init}},");
-        }
-        writer.WriteLine("    }.ToFrozenDictionary();");
-        foreach (var super in supers)
-        {
-            if (super.Attributes.Count == 0)
-            {
-                continue;
-            }
-            writer.WriteLine($"    private static void {super.Name}_init({complexName} obj, EntityExpress express, Dictionary<int, IStepObj> refMap)");
-            writer.WriteLine("    {");
-            writer.WriteLine("        var argExps = express.Args;");
-            writer.WriteLine("        switch (argExps.Count)");
-            writer.WriteLine("        {");
-            for (int x = 0; x < super.Attributes.Count; x++)
-            {
-                int y = x + 1;
-                writer.WriteLine($"            case {y}:");
-                for (int i = 0; i < y; i++)
-                {
-                    var (type, attrName, _) = super.Attributes[i];
-                    writer.WriteLine($"                obj.{attrName} = {GetInstanceCreateStr(type, i)};");
-                }
-                writer.WriteLine("                return;");
-            }
-            writer.WriteLine("            default:");
-            writer.WriteLine("                return;");
-            writer.WriteLine("        }");
-            writer.WriteLine("    }");
-        }
-        writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
-        writer.WriteLine("    {");
-        writer.WriteLine("        var complexExpress = (ComplexExpress)expression;");
-        writer.WriteLine("        foreach (EntityExpress express in complexExpress.ExpressList)");
-        writer.WriteLine("        {");
-        writer.WriteLine("            var entityName = express.EntityName.ToUpper();");
-        writer.WriteLine("            if (_entityInitFuncMap.TryGetValue(entityName, out var initFunc))");
-        writer.WriteLine("            {");
-        writer.WriteLine("                initFunc(this, express, refMap);");
-        writer.WriteLine("            }");
-        writer.WriteLine("        }");
-        writer.WriteLine("    }");
+        // writer.WriteLine($"    private static readonly FrozenDictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>> _entityInitFuncMap = new Dictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>>");
+        // writer.WriteLine("    {");
+        // foreach (var super in supers)
+        // {
+        //     if (super.Attributes.Count == 0)
+        //     {
+        //         continue;
+        //     }
+        //     writer.Write($"        {{\"{super.Name.ToUpper()}\",");
+        //     writer.WriteLine($"{super.Name}_init}},");
+        // }
+        // writer.WriteLine("    }.ToFrozenDictionary();");
+        // foreach (var super in supers)
+        // {
+        //     if (super.Attributes.Count == 0)
+        //     {
+        //         continue;
+        //     }
+        //     writer.WriteLine($"    private static void {super.Name}_init({complexName} obj, EntityExpress express, Dictionary<int, IStepObj> refMap)");
+        //     writer.WriteLine("    {");
+        //     writer.WriteLine("        var argExps = express.Args;");
+        //     writer.WriteLine("        switch (argExps.Count)");
+        //     writer.WriteLine("        {");
+        //     for (int x = 0; x < super.Attributes.Count; x++)
+        //     {
+        //         int y = x + 1;
+        //         writer.WriteLine($"            case {y}:");
+        //         for (int i = 0; i < y; i++)
+        //         {
+        //             var (type, attrName, _) = super.Attributes[i];
+        //             writer.WriteLine($"                obj.{attrName} = {GetInstanceCreateStr(type, i)};");
+        //         }
+        //         writer.WriteLine("                return;");
+        //     }
+        //     writer.WriteLine("            default:");
+        //     writer.WriteLine("                return;");
+        //     writer.WriteLine("        }");
+        //     writer.WriteLine("    }");
+        // }
+        // writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
+        // writer.WriteLine("    {");
+        // writer.WriteLine("        var complexExpress = (ComplexExpress)expression;");
+        // writer.WriteLine("        foreach (EntityExpress express in complexExpress.ExpressList)");
+        // writer.WriteLine("        {");
+        // writer.WriteLine("            var entityName = express.EntityName.ToUpper();");
+        // writer.WriteLine("            if (_entityInitFuncMap.TryGetValue(entityName, out var initFunc))");
+        // writer.WriteLine("            {");
+        // writer.WriteLine("                initFunc(this, express, refMap);");
+        // writer.WriteLine("            }");
+        // writer.WriteLine("        }");
+        // writer.WriteLine("    }");
         writer.WriteLine("}");
     }
 
@@ -1101,6 +1101,13 @@ unsafe class ExpResolver2
         writer.WriteLine("public class StepObjCreator:IStepObjCreator");
         writer.WriteLine("{");
         writer.WriteLine($"    private const int NAMESPACE_LENGTH = {NameSpace.Length};");
+        writer.WriteLine("    private static readonly Encoding _gb18030;");
+        writer.WriteLine("    static StepObjCreator()");
+        writer.WriteLine("    {");
+        writer.WriteLine("        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);");
+        writer.WriteLine("        _gb18030 = Encoding.GetEncoding(\"GB18030\");");
+        writer.WriteLine("    }");
+        writer.WriteLine("    public Encoding Encoding => _gb18030;");
         writer.WriteLine("    public IStepBaseObj Create(ReadOnlySpan<char> entityName) => entityName switch");
         writer.WriteLine("    {");
         foreach (var entity in entitiesDict.Values)
@@ -1118,12 +1125,18 @@ unsafe class ExpResolver2
         }
         foreach (var baseDef in baseDict.Values)
         {
-            if (baseDef.Name == "LOGICAL")
+            if (baseDef.Name == "LOGICAL" || baseDef.Type == "BINARY")
             {
                 continue;
             }
-            // writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(((IExpress<{typeMap[baseDef.Type]}>)express).Value),");
-            writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(express[0].{typeValueGetFuncMap[baseDef.Type]}()),");
+            if (baseDef.Type == "STRING")
+            {
+                writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(Encoding.GetString(argTokens[0].{typeValueGetFuncMap[baseDef.Type]}())),");
+            }
+            else
+            {
+                writer.WriteLine($"        \"{baseDef.Name.ToUpper()}\" => new {baseDef.Name}(argTokens[0].{typeValueGetFuncMap[baseDef.Type]}()),");
+            }
 
         }
         writer.WriteLine("        _ => default");
@@ -1155,7 +1168,17 @@ unsafe class ExpResolver2
         }
         writer.WriteLine("        _ => default");
         writer.WriteLine("    };");
-
+        const string InitStepObjStr = """
+            public void InitStepObj(IStepObj obj, ReadOnlySpan<IStepToken> argTokens, Dictionary<int, IStepObj> refMap)
+            {
+                var type = obj.GetType();
+                if (EntityImpInitReg._entityInitFuncMap.TryGetValue(type, out var initFunc))
+                {
+                    initFunc(this, obj, argTokens, refMap);
+                }
+            }
+        """;
+        writer.WriteLine(InitStepObjStr);
         writer.WriteLine("}");
     }
 
