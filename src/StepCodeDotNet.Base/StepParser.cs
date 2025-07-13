@@ -60,13 +60,13 @@ public unsafe partial class StepParser(IStepObjCreator creator)
         this._refMap = new(tokenizeResult.Lines.Count);
         foreach (var line in tokenizeResult)
         {
-            if (line.Length < 4)
+            if (line.Length < 3)
             {
                 continue; // Skip empty lines or lines with insufficient tokens
             }
-            var lineNumber = line[1].GetLineNumber();
-            var lineBody = line[3..line.Length];
-            var thirdToken = line[3];
+            var lineNumber = line[0].GetLineNumber();
+            var lineBody = line[2..line.Length];
+            var thirdToken = line[2];
             IStepBaseObj obj = null;
             switch (thirdToken.TokenType)
             {
@@ -86,7 +86,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
             }
         }
         stopWatch.Stop();
-        Console.WriteLine($"Expression resolution took: {stopWatch.ElapsedMilliseconds} ms");
+        Console.WriteLine($"Create objs took: {stopWatch.ElapsedMilliseconds} ms");
     }
 
     private void InitStepObjs(StepTokenizeResult tokenizeResult)
@@ -94,19 +94,19 @@ public unsafe partial class StepParser(IStepObjCreator creator)
         var stopWatch = Stopwatch.StartNew();
         foreach (var line in tokenizeResult)
         {
-            if (line.Length < 4)
+            if (line.Length < 3)
             {
                 continue; // Skip empty lines or lines with insufficient tokens
             }
-            var lineNumber = line[1].GetLineNumber();
+            var lineNumber = line[0].GetLineNumber();
             if (_refMap.TryGetValue(lineNumber, out var stepObj) is false)
             {
                 continue;
             }
-            var thirdToken = line[3];
+            var thirdToken = line[2];
             if (thirdToken.TokenType == StepTokenType.Entity)
             {
-                var args = IStepObjCreator.GetEntityArgs(line[4..], out var hasArgs, out _);
+                var args = IStepObjCreator.GetEntityArgs(line[3..], out var hasArgs, out _);
                 if (hasArgs is false)
                 {
                     continue; // No arguments to initialize
@@ -115,7 +115,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
             }
             else
             {
-                creator.InitStepObj(stepObj, line[3..], _refMap);
+                creator.InitStepObj(stepObj, line[2..], _refMap);
             }
 
         }
