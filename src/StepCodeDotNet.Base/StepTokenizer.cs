@@ -239,47 +239,57 @@ internal readonly ref struct StepTokenizeResult(UMSpanList<IStepToken> tokens, U
     }
 }
 
-public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
+public unsafe ref struct StepTokensMemoryPool(Int64 fileSize)
 {
-    private readonly byte* _ptr = (byte*)NativeMemory.AlignedAlloc((nuint)capacity, 16);
-    private Int64 _used = 0;
+    private Int64 _alignedUsed = 0;
+    private readonly Int64 _alignedCapacity = fileSize * 3 / 2;
 
-    public T* Rent<T>(T value) where T : unmanaged
+    // 16字节对齐的内存池，用于存储需要对齐的复杂类型
+    private readonly byte* _alignedPtr = (byte*)NativeMemory.AlignedAlloc((nuint)(fileSize * 3 / 2), 16);
+
+    private Int64 _naturalUsed = 0;
+
+    private readonly Int64 _naturalCapacity = fileSize * 5;
+
+    // 自然对齐的内存池，用于存储字符串、枚举等缓冲区数据
+    private readonly byte* _naturalPtr = (byte*)NativeMemory.Alloc((nuint)(fileSize * 5));
+
+    public T* RentAligned<T>(T value) where T : unmanaged
     {
         // 确保16字节对齐
-        var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + sizeof(T) <= capacity, "Not enough memory in pool to rent the requested type.");
-        var ptr = (T*)(_ptr + alignedUsed);
+        var alignedUsed = (_alignedUsed + 15) & ~15;
+        Debug.Assert(alignedUsed + sizeof(T) <= _alignedCapacity, "Not enough memory in aligned pool to rent the requested type.");
+        var ptr = (T*)(_alignedPtr + alignedUsed);
         Unsafe.Write(ptr, value);
-        _used = alignedUsed + sizeof(T);
+        _alignedUsed = alignedUsed + sizeof(T);
         return ptr;
     }
 
     public T* RentBuffer<T>(scoped ReadOnlySpan<T> buffer) where T : unmanaged
     {
-        // 确保16字节对齐
-        var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + buffer.Length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested buffer.");
-        var ptr = (T*)(_ptr + alignedUsed);
+        // 使用自然对齐的内存池存储缓冲区数据
+        var size = buffer.Length * sizeof(T);
+        Debug.Assert(_naturalUsed + size <= _naturalCapacity, "Not enough memory in natural pool to rent the requested buffer.");
+        var ptr = (T*)(_naturalPtr + _naturalUsed);
         buffer.CopyTo(new Span<T>(ptr, buffer.Length));
-        _used = alignedUsed + buffer.Length * sizeof(T);
+        _naturalUsed += size;
         return ptr;
     }
 
     public Span<T> RentSpan<T>(int length) where T : unmanaged
     {
-        // 确保16字节对齐
-        var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested span.");
-        var ptr = (T*)(_ptr + alignedUsed);
-        _used = alignedUsed + length * sizeof(T);
+        // 使用自然对齐的内存池分配Span
+        var size = length * sizeof(T);
+        Debug.Assert(_naturalUsed + size <= _naturalCapacity, "Not enough memory in natural pool to rent the requested span.");
+        var ptr = (T*)(_naturalPtr + _naturalUsed);
+        _naturalUsed += size;
         return new Span<T>(ptr, length);
     }
 
     // 为复杂类型分配内存的Token
     public IStepToken RentToken<T>(T value, StepTokenType type) where T : unmanaged
     {
-        var ptr = Rent(value);
+        var ptr = RentAligned(value);
         return new IStepToken(ptr, type);
     }
 
@@ -287,7 +297,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
     {
         var rentBuffer = RentBuffer(buffer);
         var value = new EnumToken(rentBuffer, buffer.Length);
-        var ptr = Rent(value);
+        var ptr = RentAligned(value);
         return new IStepToken(ptr, StepTokenType.Enum);
     }
 
@@ -295,7 +305,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
     {
         var rentBuffer = RentBuffer(buffer);
         var value = new StringToken(rentBuffer, buffer.Length);
-        var ptr = Rent(value);
+        var ptr = RentAligned(value);
         return new IStepToken(ptr, StepTokenType.String);
     }
 
@@ -303,16 +313,19 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
     {
         var rentBuffer = RentBuffer(buffer);
         var value = new EntityToken(rentBuffer, buffer.Length);
-        var ptr = Rent(value);
+        var ptr = RentAligned(value);
         return new IStepToken(ptr, StepTokenType.Entity);
     }
 
-    public readonly Int64 RemainingCapacity => capacity - _used;
+    public readonly Int64 RemainingAlignedCapacity => _alignedCapacity - _alignedUsed;
+    public readonly Int64 RemainingNaturalCapacity => _naturalCapacity - _naturalUsed;
 
     public void Dispose()
     {
-        NativeMemory.AlignedFree(_ptr);
-        _used = 0;
+        NativeMemory.AlignedFree(_alignedPtr);
+        NativeMemory.Free(_naturalPtr);
+        _alignedUsed = 0;
+        _naturalUsed = 0;
     }
 }
 
@@ -331,9 +344,7 @@ public unsafe ref struct StepTokenizer
             throw new ArgumentException("The STEP file is too large to process.");
         }
         _fileSize = (int)fileInfo.Length;
-        long preAllocatedSize = fileInfo.Length * 6;
-        PrintPreallocatedMemoryInfo(preAllocatedSize);
-        _memoryPool = new StepTokensMemoryPool(preAllocatedSize); // Allocate double the file size for tokens
+        _memoryPool = new StepTokensMemoryPool(_fileSize); // Allocate double the file size for tokens
     }
 
     private static void PrintPreallocatedMemoryInfo(long preAllocatedSize)
@@ -570,9 +581,9 @@ public unsafe ref struct StepTokenizer
     {
         using var reader = new FileStream(_stepFile, FileMode.Open, FileAccess.Read);
         SkipHeader(reader);
-        var preTokenCount = _fileSize / 2;
-        UMSpanList<IStepToken> tokens = new(_memoryPool.RentSpan<IStepToken>(preTokenCount));
-        UMSpanList<int> lines = new(_memoryPool.RentSpan<int>(preTokenCount / 6));
+        var preLineCount = _fileSize / 12;
+        UMSpanList<IStepToken> tokens = new(_memoryPool.RentSpan<IStepToken>(preLineCount * 6));
+        UMSpanList<int> lines = new(_memoryPool.RentSpan<int>(preLineCount));
         using UMList<byte> sb = new(2048);
         int buffer = 0;
         while ((buffer = reader.ReadByte()) != -1)
@@ -601,7 +612,7 @@ public unsafe ref struct StepTokenizer
         }
         lines.Add(tokens.Count); // Add the last line if it exists
         var result = new StepTokenizeResult(tokens, lines);
-        Console.WriteLine($"remaining capacity in memory pool: {_memoryPool.RemainingCapacity / 1024 / 1024} MB");
+        Console.WriteLine($"remaining aligned capacity: {_memoryPool.RemainingAlignedCapacity / 1024 / 1024} MB, remaining natural capacity: {_memoryPool.RemainingNaturalCapacity / 1024 / 1024} MB");
         return result;
     }
 

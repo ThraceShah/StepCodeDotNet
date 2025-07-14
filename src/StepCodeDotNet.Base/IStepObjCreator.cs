@@ -83,6 +83,10 @@ public interface IStepObjCreator
             return (T)(object)-1;
         }
         var byteValue = express.GetEnumValue();
+        if (byteValue.Length == 1 && byteValue[0] == 'U')
+        {
+            return (T)(object)LOGICAL.UNKNOWN;
+        }
         Span<char> charValue = stackalloc char[byteValue.Length];
         for (int i = 0; i < byteValue.Length; i++)
         {
