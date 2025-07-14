@@ -239,16 +239,72 @@ internal readonly ref struct StepTokenizeResult(UMSpanList<IStepToken> tokens, U
     }
 }
 
-public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
+public unsafe ref struct StepTokensMemoryPool
 {
-    private readonly byte* _ptr = (byte*)NativeMemory.AlignedAlloc((nuint)capacity, 16);
-    private Int64 _used = 0;
+    private readonly byte* _ptr;
+    private readonly long _capacity;
+    private Int64 _used;
+
+    private StepTokensMemoryPool(byte* ptr, long capacity)
+    {
+        _ptr = ptr;
+        _capacity = capacity;
+        _used = 0;
+    }
+
+    public static StepTokensMemoryPool TryCreate(long requestedCapacity)
+    {
+        long capacity = requestedCapacity;
+        byte* ptr = null;
+
+        // Try progressively smaller allocations until we succeed
+        while (capacity >= 50 * 1024 * 1024 && ptr == null) // Don't go below 50MB
+        {
+            try
+            {
+                ptr = (byte*)NativeMemory.AlignedAlloc((nuint)capacity, 16);
+                if (ptr != null)
+                {
+                    if (capacity != requestedCapacity)
+                    {
+                        Console.WriteLine($"Allocated reduced memory pool: {capacity / (1024 * 1024)} MB (requested {requestedCapacity / (1024 * 1024)} MB)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Allocated full memory pool: {capacity / (1024 * 1024)} MB");
+                    }
+                    break;
+                }
+            }
+            catch (OutOfMemoryException)
+            {
+                // Try with smaller allocation
+                ptr = null;
+            }
+
+            capacity = capacity * 3 / 4; // Reduce by 25% each attempt
+        }
+
+        if (ptr == null)
+        {
+            throw new OutOfMemoryException($"Failed to allocate memory pool - tried down to {capacity / (1024 * 1024)} MB");
+        }
+
+        return new StepTokensMemoryPool(ptr, capacity);
+    }
+
+
 
     public T* Rent<T>(T value) where T : unmanaged
     {
         // 确保16字节对齐
         var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + sizeof(T) <= capacity, "Not enough memory in pool to rent the requested type.");
+        if (alignedUsed + sizeof(T) > _capacity)
+        {
+            var memoryUsedMB = _used / (1024 * 1024);
+            var memoryCapacityMB = _capacity / (1024 * 1024);
+            throw new OutOfMemoryException($"Memory pool exhausted. Used: {memoryUsedMB}/{memoryCapacityMB} MB, Required: {sizeof(T)} bytes for type {typeof(T).Name}");
+        }
         var ptr = (T*)(_ptr + alignedUsed);
         Unsafe.Write(ptr, value);
         _used = alignedUsed + sizeof(T);
@@ -259,10 +315,17 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
     {
         // 确保16字节对齐
         var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + buffer.Length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested buffer.");
+        var requiredBytes = buffer.Length * sizeof(T);
+        if (alignedUsed + requiredBytes > _capacity)
+        {
+            var memoryUsedMB = _used / (1024 * 1024);
+            var memoryCapacityMB = _capacity / (1024 * 1024);
+            var requiredMB = requiredBytes / (1024.0 * 1024.0);
+            throw new OutOfMemoryException($"Memory pool exhausted. Used: {memoryUsedMB}/{memoryCapacityMB} MB, Required: {requiredMB:F2} MB for {typeof(T).Name} buffer[{buffer.Length}]");
+        }
         var ptr = (T*)(_ptr + alignedUsed);
         buffer.CopyTo(new Span<T>(ptr, buffer.Length));
-        _used = alignedUsed + buffer.Length * sizeof(T);
+        _used = alignedUsed + requiredBytes;
         return ptr;
     }
 
@@ -270,7 +333,10 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
     {
         // 确保16字节对齐
         var alignedUsed = (_used + 15) & ~15;
-        Debug.Assert(alignedUsed + length * sizeof(T) <= capacity, "Not enough memory in pool to rent the requested span.");
+        if (alignedUsed + length * sizeof(T) > _capacity)
+        {
+            throw new OutOfMemoryException($"Memory pool exhausted. Used: {_used}/{_capacity} bytes, Required: {length * sizeof(T)} bytes, Aligned: {alignedUsed}");
+        }
         var ptr = (T*)(_ptr + alignedUsed);
         _used = alignedUsed + length * sizeof(T);
         return new Span<T>(ptr, length);
@@ -307,7 +373,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
         return new IStepToken(ptr, StepTokenType.Entity);
     }
 
-    public readonly Int64 RemainingCapacity => capacity - _used;
+    public readonly Int64 RemainingCapacity => _capacity - _used;
 
     public void Dispose()
     {
@@ -331,9 +397,39 @@ public unsafe ref struct StepTokenizer
             throw new ArgumentException("The STEP file is too large to process.");
         }
         _fileSize = (int)fileInfo.Length;
-        long preAllocatedSize = fileInfo.Length * 6;
+
+        // Use a more aggressive memory allocation for large files
+        // For STEP files, we need approximately 8-10x the file size in memory for tokens and strings
+        long baseSize = fileInfo.Length;
+        long multiplier;
+        if (baseSize > 500 * 1024 * 1024) // > 500MB files
+        {
+            multiplier = 8; // 8x for very large files
+        }
+        else if (baseSize > 100 * 1024 * 1024) // > 100MB files  
+        {
+            multiplier = 10; // 10x for large files
+        }
+        else
+        {
+            multiplier = 12; // 12x for smaller files
+        }
+
+        long preAllocatedSize = baseSize * multiplier;
+
+        // Ensure we don't exceed reasonable memory limits (max 8GB pool for very large files)
+        const long maxPoolSize = 8L * 1024 * 1024 * 1024; // 8GB
+        if (preAllocatedSize > maxPoolSize)
+        {
+            preAllocatedSize = maxPoolSize;
+            Console.WriteLine($"Warning: Memory pool size capped at {maxPoolSize / (1024 * 1024)} MB due to file size");
+        }
+
         PrintPreallocatedMemoryInfo(preAllocatedSize);
-        _memoryPool = new StepTokensMemoryPool(preAllocatedSize); // Allocate double the file size for tokens
+
+        Console.WriteLine("Attempting to create memory pool...");
+        _memoryPool = StepTokensMemoryPool.TryCreate(preAllocatedSize);
+        Console.WriteLine("Memory pool created successfully!");
     }
 
     private static void PrintPreallocatedMemoryInfo(long preAllocatedSize)
@@ -496,6 +592,16 @@ public unsafe ref struct StepTokenizer
         return (_memoryPool.RentEntityToken(sb), endIndex);
     }
 
+    private static bool TryAddToken(ref UMSpanList<IStepToken> tokens, IStepToken token)
+    {
+        if (tokens.Count >= tokens.Capacity)
+        {
+            return false;
+        }
+        tokens.Add(token);
+        return true;
+    }
+
     private void TokenizeLine(ReadOnlySpan<byte> line, ref UMSpanList<IStepToken> tokens)
     {
         for (int i = 0; i < line.Length; i++)
@@ -570,7 +676,19 @@ public unsafe ref struct StepTokenizer
     {
         using var reader = new FileStream(_stepFile, FileMode.Open, FileAccess.Read);
         SkipHeader(reader);
-        var preTokenCount = _fileSize / 2;
+
+        // Conservative estimation: For STEP files, assume 1 token per 1.5 bytes on average
+        // This should provide enough space for most files
+        var estimatedTokenCount = _fileSize * 2 / 3; // More aggressive estimation
+
+        // Don't let the token allocation exceed 80% of available memory
+        var maxTokenBytes = _memoryPool.RemainingCapacity * 8 / 10;
+        var maxTokenCount = (int)(maxTokenBytes / sizeof(nint));
+
+        var preTokenCount = Math.Min(estimatedTokenCount, maxTokenCount);
+
+        Console.WriteLine($"Initial token allocation: {preTokenCount:N0} tokens (~{preTokenCount * sizeof(nint) / (1024 * 1024)} MB)");
+
         UMSpanList<IStepToken> tokens = new(_memoryPool.RentSpan<IStepToken>(preTokenCount));
         UMSpanList<int> lines = new(_memoryPool.RentSpan<int>(preTokenCount / 6));
         using UMList<byte> sb = new(2048);

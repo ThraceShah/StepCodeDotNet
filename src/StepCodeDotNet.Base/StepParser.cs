@@ -41,7 +41,9 @@ public unsafe partial class StepParser(IStepObjCreator creator)
     public void Resolve(string stepPath)
     {
         var stopWatch = Stopwatch.StartNew();
+        Console.WriteLine("Creating tokenizer...");
         using var tokenizer = new StepTokenizer(stepPath);
+        Console.WriteLine("Starting tokenization...");
         var tokenizeResult = tokenizer.TokenizeSync();
         stopWatch.Stop();
         Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
