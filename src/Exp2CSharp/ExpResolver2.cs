@@ -616,6 +616,7 @@ unsafe class ExpResolver2
         var initFileName = Path.Combine(outputDir, $"EntityImpInit.cs");
         using var initWriter = new StreamWriter(initFileName);
         initWriter.WriteLine($"namespace {NameSpace};");
+        initWriter.WriteLine("using System.Collections.Frozen;");
         initWriter.WriteLine("public static class EntityImpInit");
         initWriter.WriteLine("{");
 
@@ -725,11 +726,6 @@ unsafe class ExpResolver2
 
             initRegWriter.WriteLine($"        {{typeof({entityName}_imp), EntityImpInit.Init_{newEntityName}}},");
         }
-
-        initWriter.WriteLine("}");
-
-        initRegWriter.WriteLine("    }.ToFrozenDictionary();");
-        initRegWriter.WriteLine("}");
 
     }
 
@@ -875,6 +871,35 @@ unsafe class ExpResolver2
         var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
         var fileName = Path.Combine(outputDir, "StepComplexImp.cs");
         using var writer = new StreamWriter(fileName);
+        var initFileName = Path.Combine(outputDir, "EntityImpInit.cs");
+        using var initWriter = new StreamWriter(initFileName, append: true);
+        const string complexInitStr = """
+            public static void Init_Complex_Func(IStepObjCreator creator, IStepObj obj, ReadOnlySpan<IStepToken> args, Dictionary<int, IStepObj> refMap)
+            {
+                var remainArgs = args;
+                while (remainArgs.Length > 0)
+                {
+                    var entityExpress = IStepObjCreator.GetListTokens(remainArgs, out var valid, out var endIndex);
+                    if (valid is false && entityExpress.Length < 2)
+                    {
+                        return;
+                    }
+                    remainArgs = remainArgs[endIndex..];
+                    var entityType = Encoding.ASCII.GetString(entityExpress[0].GetEntityName());
+                    var entityArgs = IStepObjCreator.GetEntityArgs(entityExpress[1..], out var validArgs, out _);
+                    if (_complexInitFuncs.TryGetValue(entityType, out var initFunc))
+                    {
+                        initFunc(creator, obj, entityArgs, refMap);
+                    }
+                }
+            }
+            static readonly FrozenDictionary<string, Action<IStepObjCreator, IStepObj, ReadOnlySpan<IStepToken>, Dictionary<int, IStepObj>>> _complexInitFuncs = new Dictionary<string, Action<IStepObjCreator, IStepObj, ReadOnlySpan<IStepToken>, Dictionary<int, IStepObj>>>()
+            {
+        """;
+        initWriter.WriteLine(complexInitStr);
+
+        var initRegFileName = Path.Combine(outputDir, "EntityImpInitReg.cs");
+        using var initRegWriter = new StreamWriter(initRegFileName, append: true);
         writer.WriteLine($"namespace {NameSpace};");
         writer.WriteLine("using System.Collections.Frozen;");
         foreach (var (p, obj) in entitiesDict)
@@ -905,7 +930,7 @@ unsafe class ExpResolver2
                         complexEntities.lefts.Add(leftEntity.Name);
                         complexEntities.rights.Add(rightEntity.Name);
                         complexEntities.complexies.Add(complexName);
-                        PrintComplexEntityImp(writer, leftEntity, rightEntity);
+                        PrintComplexEntityImp(writer, initWriter, initRegWriter, leftEntity, rightEntity);
                     }
                 }
             }
@@ -916,7 +941,7 @@ unsafe class ExpResolver2
             complexEntities.lefts.Add(global_uncertainty_assigned_context.Name);
             complexEntities.rights.Add(global_unit_assigned_context.Name);
             complexEntities.complexies.Add($"{global_uncertainty_assigned_context.Name}_and_{global_unit_assigned_context.Name}");
-            PrintComplexEntityImp(writer, global_uncertainty_assigned_context, global_unit_assigned_context);
+            PrintComplexEntityImp(writer, initWriter, initRegWriter, global_uncertainty_assigned_context, global_unit_assigned_context);
         }
         {
             var c1 = nameEntities["representation_relationship_with_transformation"];
@@ -924,8 +949,15 @@ unsafe class ExpResolver2
             complexEntities.lefts.Add(c1.Name);
             complexEntities.rights.Add(c2.Name);
             complexEntities.complexies.Add($"{c1.Name}_and_{c2.Name}");
-            PrintComplexEntityImp(writer, c1, c2);
+            PrintComplexEntityImp(writer, initWriter, initRegWriter, c1, c2);
         }
+
+        initWriter.WriteLine("    }.ToFrozenDictionary();");
+        initWriter.WriteLine("}");
+
+        initRegWriter.WriteLine("    }.ToFrozenDictionary();");
+        initRegWriter.WriteLine("}");
+
     }
 
     string GetComplexName(params StepEntity[] entities)
@@ -1011,7 +1043,7 @@ unsafe class ExpResolver2
     }
 
 
-    void PrintComplexEntityImp(StreamWriter writer, StepEntity left, StepEntity right)
+    void PrintComplexEntityImp(StreamWriter writer, StreamWriter initWriter, StreamWriter initRegWriter, StepEntity left, StepEntity right)
     {
         var complexName = $"{left.Name}_and_{right.Name}_imp";
         writer.WriteLine($"public class {complexName} : {EntityNameToInterfaceName(left.Name)}, {EntityNameToInterfaceName(right.Name)}");
@@ -1026,6 +1058,8 @@ unsafe class ExpResolver2
         {
             writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
         }
+        writer.WriteLine("}");
+
         var leftSupers = GetEntityAllSupers(left);
         var supers = new HashSet<StepEntity>
         {
@@ -1033,6 +1067,19 @@ unsafe class ExpResolver2
             right
         };
         supers.UnionWith(leftSupers);
+
+        foreach (var super in supers)
+        {
+            if (super.Attributes.Count == 0)
+            {
+                continue;
+            }
+            initWriter.Write($"        {{\"{super.Name.ToUpper()}\",");
+            initWriter.WriteLine($"Init_{super.Name}}},");
+        }
+        initRegWriter.WriteLine($"        {{typeof({complexName}), EntityImpInit.Init_Complex_Func}},");
+
+
         // writer.WriteLine($"    private static readonly FrozenDictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>> _entityInitFuncMap = new Dictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>>");
         // writer.WriteLine("    {");
         // foreach (var super in supers)
@@ -1072,19 +1119,6 @@ unsafe class ExpResolver2
         //     writer.WriteLine("        }");
         //     writer.WriteLine("    }");
         // }
-        // writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
-        // writer.WriteLine("    {");
-        // writer.WriteLine("        var complexExpress = (ComplexExpress)expression;");
-        // writer.WriteLine("        foreach (EntityExpress express in complexExpress.ExpressList)");
-        // writer.WriteLine("        {");
-        // writer.WriteLine("            var entityName = express.EntityName.ToUpper();");
-        // writer.WriteLine("            if (_entityInitFuncMap.TryGetValue(entityName, out var initFunc))");
-        // writer.WriteLine("            {");
-        // writer.WriteLine("                initFunc(this, express, refMap);");
-        // writer.WriteLine("            }");
-        // writer.WriteLine("        }");
-        // writer.WriteLine("    }");
-        writer.WriteLine("}");
     }
 
 
@@ -1160,6 +1194,10 @@ unsafe class ExpResolver2
             writer.Write($"\"{entity.ToUpper()}\",");
         }
         writer.WriteLine("];");
+        writer.WriteLine("    FrozenSet<string> IStepObjCreator.LeftNames=> _leftNames;");
+        writer.WriteLine("    FrozenSet<string> IStepObjCreator.RightNames=> _rightNames;");
+        writer.WriteLine("    FrozenSet<string> IStepObjCreator.ComplexNames=> _complexNames;");
+
         writer.WriteLine("    public IStepObj CreateComplex(ReadOnlySpan<char> complexName) => complexName switch");
         writer.WriteLine("    {");
         foreach (var entity in complexEntities.complexies)

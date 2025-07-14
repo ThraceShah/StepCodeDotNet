@@ -6,7 +6,10 @@ using System.Text;
 
 public interface IStepObjCreator
 {
-    public Encoding Encoding { get; }
+    protected Encoding Encoding { get; }
+    protected FrozenSet<string> LeftNames { get; }
+    protected FrozenSet<string> RightNames { get; }
+    protected FrozenSet<string> ComplexNames { get; }
 
     public IStepBaseObj Create(ReadOnlySpan<byte> entityName)
     {
@@ -27,8 +30,43 @@ public interface IStepObjCreator
         }
         return Create(charName, argTokens);
     }
+
     public IStepBaseObj Create(ReadOnlySpan<char> entityName, ReadOnlySpan<IStepToken> argTokens);
-    // public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress);
+
+    public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress)
+    {
+        foreach (var leftToken in complexExpress)
+        {
+            if (leftToken.TokenType != StepTokenType.Entity)
+            {
+                continue;
+            }
+            var leftName = Encoding.UTF8.GetString(leftToken.GetEntityName());
+            if (LeftNames.Contains(leftName) is false)
+            {
+                continue;
+            }
+            foreach (var rightToken in complexExpress)
+            {
+                if (rightToken.TokenType != StepTokenType.Entity)
+                {
+                    continue;
+                }
+                var rightName = Encoding.UTF8.GetString(rightToken.GetEntityName());
+                if (RightNames.Contains(rightName) is false)
+                {
+                    continue;
+                }
+                var complexName = $"{leftName}_AND_{rightName}";
+                if (ComplexNames.Contains(complexName))
+                {
+                    return CreateComplex(complexName);
+                }
+            }
+        }
+        return default;
+    }
+
     public IStepObj CreateComplex(ReadOnlySpan<char> complexName);
 
     public void InitStepObj(IStepObj obj, ReadOnlySpan<IStepToken> argTokens, Dictionary<int, IStepObj> refMap);

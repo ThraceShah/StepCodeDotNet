@@ -74,13 +74,14 @@ public unsafe partial class StepParser(IStepObjCreator creator)
                     obj = creator.Create(thirdToken.GetEntityName());
                     break;
                 case StepTokenType.LeftBracket:
-                    // obj = creator.CreateComplex(lineBody);
+                    obj = creator.CreateComplex(lineBody);
                     break;
                 default:
                     break;
             }
             if (obj is IStepObj stepObj)
             {
+                stepObj.line_id = lineNumber;
                 _stepObjs.Add(stepObj);
                 _refMap[lineNumber] = stepObj;
             }
