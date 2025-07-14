@@ -311,7 +311,7 @@ public unsafe ref struct StepTokensMemoryPool(Int64 capacity)
 
     public void Dispose()
     {
-        NativeMemory.Free(_ptr);
+        NativeMemory.AlignedFree(_ptr);
         _used = 0;
     }
 }

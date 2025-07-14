@@ -183,6 +183,8 @@ unsafe class ExpResolver2
         ["BINARY"] = "GetBinaryValue",
     };
 
+    HashSet<string> complexSubEntities = [];
+
     (List<string> lefts, List<string> rights, List<string> complexies) complexEntities = ([], [], []);
 
     Dictionary<string, StepBaseDefine> baseNameDict = [];
@@ -716,7 +718,15 @@ unsafe class ExpResolver2
             initWriter.WriteLine($"        var stepObj=({entityName})obj;");
             initWriter.WriteLine($"        foreach (var init in {entityName}_Funcs)");
             initWriter.WriteLine("        {");
-            initWriter.WriteLine("            argExps = init(creator, stepObj, argExps, refMap);");
+            const string initStr = """
+                        int skip = 0;
+                        while (argExps[skip].TokenType == StepTokenType.Comma)
+                        {
+                            skip++;
+                        }
+                        argExps = init(creator, stepObj, argExps[skip..], refMap);
+            """;
+            initWriter.WriteLine(initStr);
             initWriter.WriteLine("            if (argExps.Length == 0)");
             initWriter.WriteLine("            {");
             initWriter.WriteLine("                return;");
@@ -1071,6 +1081,10 @@ unsafe class ExpResolver2
         foreach (var super in supers)
         {
             if (super.Attributes.Count == 0)
+            {
+                continue;
+            }
+            if (complexSubEntities.Add(super.Name) is false)
             {
                 continue;
             }
