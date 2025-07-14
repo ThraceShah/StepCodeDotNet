@@ -42,7 +42,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
     {
         var stopWatch = Stopwatch.StartNew();
         using var tokenizer = new StepTokenizer(stepPath);
-        var tokenizeResult = tokenizer.TokenizeSync();
+        using var tokenizeResult = tokenizer.TokenizeSync();
         stopWatch.Stop();
         Console.WriteLine($"Tokenization took: {stopWatch.ElapsedMilliseconds} ms");
 #if DEBUG
@@ -50,6 +50,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
 #endif
         CreateStepObjs(tokenizeResult);
         InitStepObjs(tokenizeResult);
+        Console.WriteLine($"峰值内存使用: {GetMemoryUsedMB()} MB");
         return;
     }
 
