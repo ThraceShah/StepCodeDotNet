@@ -136,6 +136,11 @@ public interface IStepObjCreator
         };
     }
 
+    public byte[] GetBINARY(IStepToken express)
+    {
+        throw new NotSupportedException("BINARY type is not supported in this context.");
+    }
+
 
     public bool GetBOOLEAN(IStepToken express) => express.TokenType switch
     {
