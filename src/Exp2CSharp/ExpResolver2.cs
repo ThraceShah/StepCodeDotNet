@@ -171,6 +171,7 @@ unsafe class ExpResolver2
         ["BOOLEAN"] = "System.Boolean",
         ["NUMBER"] = "System.Double",
         ["BINARY"] = "System.Byte[]",
+        ["LOGICAL"] = "StepCodeDotNet.Base.LOGICAL",
     };
 
     readonly Dictionary<string, string> typeValueGetFuncMap = new()
@@ -851,8 +852,50 @@ unsafe class ExpResolver2
         {
             return [entitiesDict[expression->symbol.Name]];
         }
+        else if (expression->type->u.type->body->type == type_enum.op_)
+        {
+            var expr = expression->symbol.Name;
+            var opCode = expression->e.op_code;
+        }
         throw new NotImplementedException($"Expression type {expression->type->u.type->body->type} not implemented");
     }
+
+    List<List<StepEntity>> GetExpressionSubOpEntities2(Expression_* subTypeExp, Dictionary<string, StepEntity> entitiesDict)
+    {
+        var result = new List<List<StepEntity>>();
+        var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
+        if (subTypeExp->e.op_code == Op_Code.OP_ANDOR)
+        {
+            var left = subTypeExp->e.op1;
+            if (left->type->u.type->body->type == type_enum.op_)
+            {
+                var r = GetExpressionSubOpEntities2(left, entitiesDict);
+                result.AddRange(r);
+            }
+            else
+            {
+                var leftEntities = GetExpressionSubOpEntities(left, nameEntities);
+                result.Add(leftEntities);
+            }
+            var right = subTypeExp->e.op2;
+            if (right->type->u.type->body->type == type_enum.op_)
+            {
+                var r = GetExpressionSubOpEntities2(right, nameEntities);
+                result.AddRange(r);
+            }
+            else
+            {
+                var rightEntities = GetExpressionSubOpEntities(right, nameEntities);
+                result.Add(rightEntities);
+            }
+        }
+        else
+        {
+
+        }
+        return result;
+    }
+
     public static HashSet<StepEntity> GetEntityAllSupers(StepEntity stepEntity)
     {
         var stack = new Stack<StepEntity>();
@@ -876,6 +919,12 @@ unsafe class ExpResolver2
         }
         return allSuper;
     }
+
+    private void PrintComplexEntityImp(StreamWriter writer, StreamWriter initWriter, StreamWriter initRegWriter, List<List<StepEntity>> complexEntities)
+    {
+
+    }
+
     private void PrintComplexImp2(Dictionary<nint, StepEntity> entitiesDict)
     {
         var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
@@ -922,27 +971,7 @@ unsafe class ExpResolver2
             }
             if (subTypeExp->e.op_code == Op_Code.OP_ANDOR)
             {
-                var left = subTypeExp->e.op1;
-                var leftType = left->type->u.type->body->type;
-                var leftEntities = GetExpressionSubOpEntities(left, nameEntities);
-                var right = subTypeExp->e.op2;
-                var rightType = right->type->u.type->body->type;
-                var rightEntities = GetExpressionSubOpEntities(right, nameEntities);
-                foreach (var leftEntity in leftEntities)
-                {
-                    foreach (var rightEntity in rightEntities)
-                    {
-                        if (leftEntity.Name == rightEntity.Name)
-                        {
-                            continue;
-                        }
-                        var complexName = $"{leftEntity.Name}_and_{rightEntity.Name}";
-                        complexEntities.lefts.Add(leftEntity.Name);
-                        complexEntities.rights.Add(rightEntity.Name);
-                        complexEntities.complexies.Add(complexName);
-                        PrintComplexEntityImp(writer, initWriter, initRegWriter, leftEntity, rightEntity);
-                    }
-                }
+                var enities = GetExpressionSubOpEntities2(subTypeExp, nameEntities);
             }
         }
         {
@@ -967,6 +996,35 @@ unsafe class ExpResolver2
 
         initRegWriter.WriteLine("    }.ToFrozenDictionary();");
         initRegWriter.WriteLine("}");
+
+    }
+
+    static string ReplaceFirstCharToUpper(string str)
+    {
+        if (string.IsNullOrEmpty(str))
+        {
+            return str;
+        }
+        return char.ToUpper(str[0]) + str[1..];
+    }
+
+    void PrintComplexExpress(StreamWriter writer, List<StepEntity> express)
+    {
+        if (express.Count == 0)
+        {
+            return;
+        }
+        var mainEntity = express[0];
+        var complexName = $"{mainEntity.Name}_complex";
+        var interfacesStr = string.Join(", ", express.Select(x => EntityNameToInterfaceName(x.Name)));
+        writer.WriteLine($"public class {complexName} : {interfacesStr}");
+        writer.WriteLine("{");
+        writer.WriteLine($"    public int line_id {{ get; set; }}");
+        foreach (var entity in express)
+        {
+            var subEntityName = ReplaceFirstCharToUpper(entity.Name);
+            writer.WriteLine($"    public {EntityNameToInterfaceName(entity.Name)} {subEntityName} {{ get; set; }}");
+        }
 
     }
 
@@ -998,57 +1056,13 @@ unsafe class ExpResolver2
         var leftSupers = GetEntityAllSupers(entities[0]);
         var supers = new HashSet<StepEntity>(entities);
         supers.UnionWith(leftSupers);
-        writer.WriteLine($"    private static readonly FrozenDictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>> _entityInitFuncMap = new Dictionary<string, Action<{complexName}, EntityExpress, Dictionary<int, IStepObj>>>");
-        writer.WriteLine("    {");
         foreach (var super in supers)
         {
             if (super.Attributes.Count == 0)
             {
                 continue;
             }
-            writer.Write($"        {{\"{super.Name.ToUpper()}\",");
-            writer.WriteLine($"{super.Name}_init}},");
         }
-        writer.WriteLine("    }.ToFrozenDictionary();");
-        foreach (var super in supers)
-        {
-            if (super.Attributes.Count == 0)
-            {
-                continue;
-            }
-            writer.WriteLine($"    private static void {super.Name}_init({complexName} obj, EntityExpress express, Dictionary<int, IStepObj> refMap)");
-            writer.WriteLine("    {");
-            writer.WriteLine("        var argExps = express.Args;");
-            writer.WriteLine("        switch (argExps.Count)");
-            writer.WriteLine("        {");
-            for (int x = 0; x < super.Attributes.Count; x++)
-            {
-                int y = x + 1;
-                writer.WriteLine($"            case {y}:");
-                for (int i = 0; i < y; i++)
-                {
-                    var (type, attrName, _) = super.Attributes[i];
-                    writer.WriteLine($"                obj.{attrName} = {GetInstanceCreateStr(type, i)};");
-                }
-                writer.WriteLine("                return;");
-            }
-            writer.WriteLine("            default:");
-            writer.WriteLine("                return;");
-            writer.WriteLine("        }");
-            writer.WriteLine("    }");
-        }
-        writer.WriteLine("    public void Init(IExpress expression, Dictionary<int, IStepObj> refMap)");
-        writer.WriteLine("    {");
-        writer.WriteLine("        var complexExpress = (ComplexExpress)expression;");
-        writer.WriteLine("        foreach (EntityExpress express in complexExpress.ExpressList)");
-        writer.WriteLine("        {");
-        writer.WriteLine("            var entityName = express.EntityName.ToUpper();");
-        writer.WriteLine("            if (_entityInitFuncMap.TryGetValue(entityName, out var initFunc))");
-        writer.WriteLine("            {");
-        writer.WriteLine("                initFunc(this, express, refMap);");
-        writer.WriteLine("            }");
-        writer.WriteLine("        }");
-        writer.WriteLine("    }");
         writer.WriteLine("}");
     }
 
