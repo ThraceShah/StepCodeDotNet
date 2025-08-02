@@ -182,6 +182,7 @@ unsafe class ExpResolver2
         ["BOOLEAN"] = "GetBooleanValue",
         ["NUMBER"] = "GetRealValue",
         ["BINARY"] = "GetBinaryValue",
+        ["LOGICAL"] = "GetLogicalValue",
     };
 
     HashSet<string> complexSubEntities = [];
@@ -641,8 +642,12 @@ unsafe class ExpResolver2
             var entityName = obj.Name;
             var interfaceName = EntityNameToInterfaceName(entityName);
             writer.WriteLine($"public class {entityName}_imp : {interfaceName}");
+            // if (obj.SuperTypes.Count > 0)
+            // {
+            //     writer.Write($", {string.Join(", ", obj.SuperTypes.Select(x => GetStepTypeStrng(x)))}");
+            // }
             writer.WriteLine("{");
-            writer.WriteLine($"    public int line_id {{ get; set; }}");
+            writer.WriteLine($"    public int line_tag {{ get; set; }}");
             var allAttrs = GetEntityAllAttrs(obj);
             HashSet<string> attrNames = new();
             foreach (var (type, attrName, subEntity) in allAttrs)
@@ -920,11 +925,6 @@ unsafe class ExpResolver2
         return allSuper;
     }
 
-    private void PrintComplexEntityImp(StreamWriter writer, StreamWriter initWriter, StreamWriter initRegWriter, List<List<StepEntity>> complexEntities)
-    {
-
-    }
-
     private void PrintComplexImp2(Dictionary<nint, StepEntity> entitiesDict)
     {
         var nameEntities = entitiesDict.Values.ToDictionary(x => x.Name, x => x);
@@ -972,23 +972,24 @@ unsafe class ExpResolver2
             if (subTypeExp->e.op_code == Op_Code.OP_ANDOR)
             {
                 var enities = GetExpressionSubOpEntities2(subTypeExp, nameEntities);
+                PrintComplexEntityImp(writer, initWriter, initRegWriter, obj, enities);
+
             }
         }
         {
-            var global_uncertainty_assigned_context = nameEntities["global_uncertainty_assigned_context"];
-            var global_unit_assigned_context = nameEntities["global_unit_assigned_context"];
-            complexEntities.lefts.Add(global_uncertainty_assigned_context.Name);
-            complexEntities.rights.Add(global_unit_assigned_context.Name);
-            complexEntities.complexies.Add($"{global_uncertainty_assigned_context.Name}_and_{global_unit_assigned_context.Name}");
-            PrintComplexEntityImp(writer, initWriter, initRegWriter, global_uncertainty_assigned_context, global_unit_assigned_context);
+            List<StepEntity> global_uncertainty_assigned_context = [nameEntities["global_uncertainty_assigned_context"]];
+            List<StepEntity> global_unit_assigned_context = [nameEntities["global_unit_assigned_context"]];
+            var baseEnity = nameEntities["representation_context"];
+            var complexExpress = new List<List<StepEntity>> { global_uncertainty_assigned_context, global_unit_assigned_context };
+            PrintComplexEntityImp(writer, initWriter, initRegWriter, baseEnity, complexExpress);
+
         }
         {
-            var c1 = nameEntities["representation_relationship_with_transformation"];
-            var c2 = nameEntities["shape_representation_relationship"];
-            complexEntities.lefts.Add(c1.Name);
-            complexEntities.rights.Add(c2.Name);
-            complexEntities.complexies.Add($"{c1.Name}_and_{c2.Name}");
-            PrintComplexEntityImp(writer, initWriter, initRegWriter, c1, c2);
+            List<StepEntity> c1 = [nameEntities["representation_relationship_with_transformation"]];
+            List<StepEntity> c2 = [nameEntities["shape_representation_relationship"]];
+            var baseEntity = nameEntities["representation_relationship"];
+            var complexExpress = new List<List<StepEntity>> { c1, c2 };
+            PrintComplexEntityImp(writer, initWriter, initRegWriter, baseEntity, complexExpress);
         }
 
         initWriter.WriteLine("    }.ToFrozenDictionary();");
@@ -1008,89 +1009,80 @@ unsafe class ExpResolver2
         return char.ToUpper(str[0]) + str[1..];
     }
 
-    void PrintComplexExpress(StreamWriter writer, List<StepEntity> express)
+
+    void PrintComplexEntityImp(StreamWriter writer, StreamWriter initWriter, StreamWriter initRegWriter, StepEntity baseEntity, List<List<StepEntity>> complexEntities)
     {
-        if (express.Count == 0)
-        {
-            return;
-        }
-        var mainEntity = express[0];
-        var complexName = $"{mainEntity.Name}_complex";
-        var interfacesStr = string.Join(", ", express.Select(x => EntityNameToInterfaceName(x.Name)));
-        writer.WriteLine($"public class {complexName} : {interfacesStr}");
+
+        var complexName = $"{baseEntity.Name}_complex";
+        var allEntities = complexEntities.SelectMany(x => x).ToHashSet();
+        writer.WriteLine($"public class {complexName} : {baseEntity.Name}, IComplex<{baseEntity.Name}>, {string.Join(", ", allEntities.Select(x => EntityNameToInterfaceName(x.Name)))}");
         writer.WriteLine("{");
-        writer.WriteLine($"    public int line_id {{ get; set; }}");
-        foreach (var entity in express)
+        foreach (var entity in allEntities)
         {
-            var subEntityName = ReplaceFirstCharToUpper(entity.Name);
-            writer.WriteLine($"    public {EntityNameToInterfaceName(entity.Name)} {subEntityName} {{ get; set; }}");
+            var attrName = $"sub_{entity.Name}";
+            var typeName = $"{entity.Name}_imp";
+            writer.WriteLine($"    private {typeName} {attrName} = null;");
         }
-
-    }
-
-    string GetComplexName(params StepEntity[] entities)
-    {
-        var complexName = string.Join("_and_", entities.Select(x => x.Name));
-        return complexName;
-    }
-
-    void PrintComplexEntityImp2(StreamWriter writer, params StepEntity[] entities)
-    {
-        var complexName = GetComplexName(entities);
-        writer.WriteLine($"public class {complexName} : {string.Join(", ", entities.Select(x => EntityNameToInterfaceName(x.Name)))}");
-        writer.WriteLine("{");
-        writer.WriteLine($"    public int line_id {{ get; set; }}");
-        var leftAllAttrs = GetEntityAllAttrs(entities[0]);
-        foreach (var (type, attrName, _) in leftAllAttrs)
+        writer.WriteLine($"    public int line_tag {{ get; set; }}");
+        var leftAllAttrs = GetEntityAllAttrs(baseEntity);
+        var impedingAttrs = new HashSet<string>();
+        foreach (var (type, attrName, subEntity) in leftAllAttrs)
         {
+            var attrKey = $"{GetStepTypeStrng(type)}_{subEntity.Name}.{attrName}";
+            impedingAttrs.Add(attrKey);
             writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
         }
-        for (int i = 1; i < entities.Length; i++)
+        foreach (var entity in allEntities)
         {
-            var right = entities[i];
-            foreach (var (type, attrName, _) in right.Attributes)
+            var fieldName = $"sub_{entity.Name}";
+            var subEntityAllAttrs = GetEntityAllAttrs(entity);
+            foreach (var (type, attrName, subEntity) in subEntityAllAttrs)
             {
-                writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
+                var attrKey = $"{GetStepTypeStrng(type)}_{subEntity.Name}.{attrName}";
+                if (impedingAttrs.Add(attrKey) is false)
+                {
+                    continue;
+                }
+                writer.WriteLine($"   {GetStepTypeStrng(type)} {subEntity.Name}.{attrName}");
+                writer.WriteLine("    {");
+                writer.WriteLine($"        get => {fieldName}.{attrName};");
+                writer.WriteLine($"        set");
+                writer.WriteLine("        {");
+                writer.WriteLine($"            if ({fieldName} is null)");
+                writer.WriteLine("            {");
+                writer.WriteLine($"                {fieldName} = new {entity.Name}_imp();");
+                writer.WriteLine("            }");
+                writer.WriteLine($"            {fieldName}.{attrName} = value;");
+                writer.WriteLine("        }");
+                writer.WriteLine("    }");
             }
         }
-        var leftSupers = GetEntityAllSupers(entities[0]);
-        var supers = new HashSet<StepEntity>(entities);
-        supers.UnionWith(leftSupers);
-        foreach (var super in supers)
-        {
-            if (super.Attributes.Count == 0)
-            {
-                continue;
-            }
-        }
-        writer.WriteLine("}");
-    }
 
-
-    void PrintComplexEntityImp(StreamWriter writer, StreamWriter initWriter, StreamWriter initRegWriter, StepEntity left, StepEntity right)
-    {
-        var complexName = $"{left.Name}_and_{right.Name}_imp";
-        writer.WriteLine($"public class {complexName} : {EntityNameToInterfaceName(left.Name)}, {EntityNameToInterfaceName(right.Name)}");
-        writer.WriteLine("{");
-        writer.WriteLine($"    public int line_id {{ get; set; }}");
-        var leftAllAttrs = GetEntityAllAttrs(left);
-        foreach (var (type, attrName, _) in leftAllAttrs)
+        writer.WriteLine($"    public List<{baseEntity.Name}> sub_entities");
+        writer.WriteLine("    {");
+        writer.WriteLine("        get");
+        writer.WriteLine("        {");
+        writer.WriteLine($"        var list = new List<{baseEntity.Name}>(){{this}};");
+        foreach (var entity in allEntities)
         {
-            writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
+            var fieldName = $"sub_{entity.Name}";
+            writer.WriteLine($"        if({fieldName} is not null)");
+            writer.WriteLine($"        {{");
+            writer.WriteLine($"            list.Add({fieldName});");
+            writer.WriteLine($"        }}");
         }
-        foreach (var (type, attrName, _) in right.Attributes)
-        {
-            writer.WriteLine($"    public {GetStepTypeStrng(type)} {attrName} {{ get; set; }}");
-        }
+        writer.WriteLine("        return list;");
+        writer.WriteLine("        }");
+        writer.WriteLine("    }");
         writer.WriteLine("}");
 
-        var leftSupers = GetEntityAllSupers(left);
+        var leftSupers = GetEntityAllSupers(baseEntity);
         var supers = new HashSet<StepEntity>
         {
-            left,
-            right
+            baseEntity
         };
         supers.UnionWith(leftSupers);
+        supers.UnionWith(allEntities);
 
         foreach (var super in supers)
         {
@@ -1147,6 +1139,8 @@ unsafe class ExpResolver2
         //     writer.WriteLine("        }");
         //     writer.WriteLine("    }");
         // }
+        // writer.WriteLine("}");
+
     }
 
 

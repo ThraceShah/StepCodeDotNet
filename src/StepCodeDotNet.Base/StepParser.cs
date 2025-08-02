@@ -82,7 +82,7 @@ public unsafe partial class StepParser(IStepObjCreator creator)
             }
             if (obj is IStepObj stepObj)
             {
-                stepObj.line_id = lineNumber;
+                stepObj.line_tag = lineNumber;
                 _stepObjs.Add(stepObj);
                 _refMap[lineNumber] = stepObj;
             }

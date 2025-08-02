@@ -662,4 +662,22 @@ public static class StepTokenExtensions
         Debug.Assert(token.TokenType == StepTokenType.Enum);
         return token.As<EnumToken>().Value;
     }
+
+    public static LOGICAL GetLogicalValue(this IStepToken token)
+    {
+        if (token.TokenType == StepTokenType.Boolean)
+        {
+            return token.GetBoolValue() ? LOGICAL.TRUE : LOGICAL.FALSE;
+        }
+        if (token.TokenType == StepTokenType.Enum)
+        {
+            var enumValue = token.As<EnumToken>().Value;
+            return enumValue[0] switch
+            {
+                (byte)'U' => LOGICAL.UNKNOWN,
+                _ => throw new InvalidOperationException($"Unexpected enum value: {Encoding.ASCII.GetString(enumValue)}"),
+            };
+        }
+        return LOGICAL.UNKNOWN;
+    }
 }

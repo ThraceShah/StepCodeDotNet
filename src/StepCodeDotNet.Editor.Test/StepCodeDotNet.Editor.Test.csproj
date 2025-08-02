@@ -8,12 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\StepCodeDotNet.Base\StepCodeDotNet.Base.csproj" />
+    <ProjectReference Include="../StepCodeDotNet.Base/StepCodeDotNet.Base.csproj" />
     <ProjectReference
-      Include="..\StepCodeDotNet.Gen/ap214e3_2010/StepCodeDotNet.Gen.automotive_design.csproj" />
+      Include="../StepCodeDotNet.Gen/ap214e3_2010/StepCodeDotNet.Gen.automotive_design.csproj" />
     <ProjectReference
-      Include="..\StepCodeDotNet.Gen/config_control_design/StepCodeDotNet.Gen.config_control_design.csproj" />
+      Include="../StepCodeDotNet.Gen/ap203e2/StepCodeDotNet.Gen.ap203_configuration_controlled_3d_design_of_mechanical_parts_and_assemblies_mim_lf.csproj" />
+    <ProjectReference
+      Include="../StepCodeDotNet.Gen/ap242/StepCodeDotNet.Gen.ap242_managed_model_based_3d_engineering_mim_lf.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <None Include="../../stepfiles/step_file.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
