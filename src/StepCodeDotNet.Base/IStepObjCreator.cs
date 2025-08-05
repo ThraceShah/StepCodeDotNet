@@ -279,6 +279,11 @@ public interface IStepObjCreator
             }
             if (refMap.TryGetValue(token.GetLineNumber(), out var stepObj))
             {
+                if (typeof(T).IsAssignableFrom(stepObj.GetType()) is false)
+                {
+                    Console.WriteLine($"Warning: {stepObj.GetType().Name} is not assignable to {typeof(T).Name},obj line_tag: #{stepObj.line_tag}");
+                    continue;
+                }
                 r[i] = (T)stepObj;
                 i++;
             }
