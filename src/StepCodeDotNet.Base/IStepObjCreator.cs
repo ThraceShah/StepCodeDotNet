@@ -44,7 +44,7 @@ public interface IStepObjCreator
                 }
                 var entityName = leftToken.GetEntityName();
                 var strName = Encoding.ASCII.GetString(entityName);
-                if (names.Contains(strName) is false)
+                if (names.Contains(strName, StringComparer.OrdinalIgnoreCase) is false)
                 {
                     isThis = false;
                     break;

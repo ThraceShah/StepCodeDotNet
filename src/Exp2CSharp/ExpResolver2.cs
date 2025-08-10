@@ -1108,11 +1108,12 @@ unsafe class ExpResolver2
         {
             var superEntities = entity.GetSuperTypesRec();
             allEntities.UnionWith(superEntities);
+            allEntities.Add(entity);
         }
 
         if (complexCreateStrs.ContainsKey(complexName) == false)
         {
-            complexCreateStrs[complexName] = [.. allEntities.Select(x => x.Name)];
+            complexCreateStrs[complexName] = [.. allEntities.Select(x => x.Name.ToUpper())];
         }
 
         writer.WriteLine($"public class {complexName} : IInitableObj, IComplexObj, {string.Join(", ", allEntities.Select(x => EntityNameToInterfaceName(x.Name)))}");
