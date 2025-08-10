@@ -7,9 +7,7 @@ using System.Text;
 public interface IStepObjCreator
 {
     protected Encoding Encoding { get; }
-    protected FrozenSet<string> LeftNames { get; }
-    protected FrozenSet<string> RightNames { get; }
-    protected FrozenSet<string> ComplexNames { get; }
+    protected (FrozenSet<string> names, Func<IStepObj> createFunc)[] ComplexNames { get; }
 
     public IStepBaseObj Create(ReadOnlySpan<byte> entityName)
     {
@@ -35,41 +33,30 @@ public interface IStepObjCreator
 
     public IStepObj CreateComplex(ReadOnlySpan<IStepToken> complexExpress)
     {
-        foreach (var leftToken in complexExpress)
+        foreach (var (names, createFunc) in ComplexNames)
         {
-            if (leftToken.TokenType != StepTokenType.Entity)
+            bool isThis = true;
+            foreach (var leftToken in complexExpress)
             {
-                continue;
-            }
-            var leftName = Encoding.UTF8.GetString(leftToken.GetEntityName());
-            if (LeftNames.Contains(leftName) is false)
-            {
-                continue;
-            }
-            foreach (var rightToken in complexExpress)
-            {
-                if (rightToken.TokenType != StepTokenType.Entity)
+                if (leftToken.TokenType != StepTokenType.Entity)
                 {
                     continue;
                 }
-                var rightName = Encoding.UTF8.GetString(rightToken.GetEntityName());
-                if (RightNames.Contains(rightName) is false)
+                var entityName = leftToken.GetEntityName();
+                var strName = Encoding.ASCII.GetString(entityName);
+                if (names.Contains(strName) is false)
                 {
-                    continue;
+                    isThis = false;
+                    break;
                 }
-                var complexName = $"{leftName}_AND_{rightName}";
-                if (ComplexNames.Contains(complexName))
-                {
-                    return CreateComplex(complexName);
-                }
+            }
+            if (isThis)
+            {
+                return createFunc();
             }
         }
         return default;
     }
-
-    public IStepObj CreateComplex(ReadOnlySpan<char> complexName);
-
-    public void InitStepObj(IStepObj obj, ReadOnlySpan<IStepToken> argTokens, Dictionary<int, IStepObj> refMap);
 
     public Array CreateArray(Type elementType, int size)
     {
@@ -223,11 +210,11 @@ public interface IStepObjCreator
             {
                 r = Create(firstToken.GetEntityName());
             }
-            if (r is IStepObj stepObj)
+            if (r is IInitableObj stepObj)
             {
                 if (hasArgs)
                 {
-                    InitStepObj(stepObj, args, refMap);
+                    stepObj.Init(this, args, refMap);
                 }
             }
             return ((T)r, endIndex);

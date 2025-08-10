@@ -5,7 +5,12 @@ public interface IStepObj : IStepBaseObj
 {
     int line_tag { get; set; }
 }
-public interface IComplex<T> : IStepObj where T : IStepObj
+public interface IComplexObj
 {
-    List<T> sub_entities { get; }
+    bool Is<SubEntity>(out SubEntity result) where SubEntity : class, IStepObj;
+}
+
+public interface IInitableObj
+{
+    void Init(IStepObjCreator creator, ReadOnlySpan<IStepToken> args, Dictionary<int, IStepObj> refMap);
 }

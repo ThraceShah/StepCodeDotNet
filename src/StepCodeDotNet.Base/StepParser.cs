@@ -113,11 +113,11 @@ public unsafe partial class StepParser(IStepObjCreator creator)
                 {
                     continue; // No arguments to initialize
                 }
-                creator.InitStepObj(stepObj, args, _refMap);
+                ((IInitableObj)stepObj).Init(creator, args, _refMap);
             }
             else
             {
-                creator.InitStepObj(stepObj, line[2..], _refMap);
+                ((IInitableObj)stepObj).Init(creator, line[2..], _refMap);
             }
 
         }
